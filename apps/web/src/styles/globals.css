@@ -1168,6 +1168,260 @@ a:focus-visible {
 }
 
 /* ==========================================================================
+   Filter Input Component
+   ========================================================================== */
+
+.filter-input {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-2) var(--spacing-3);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .filter-input {
+    transition: border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
+  }
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-muted);
+}
+
+.filter-input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.filter-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* Button loading state */
+.btn-loading {
+  opacity: 0.7;
+  cursor: wait;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Settings Page Component Styles
+   ========================================================================== */
+
+/* Settings section card spacing */
+.settings-section {
+  margin-block-end: var(--spacing-6);
+}
+
+/* Section title within a settings card */
+.section-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-block-end: var(--spacing-2);
+}
+
+/* --------------------------------------------------------------------------
+   Checkbox Grid — Market and Timeframe Selection
+   -------------------------------------------------------------------------- */
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-3);
+}
+
+.checkbox-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background-color: var(--color-background);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .checkbox-card {
+    transition: border-color var(--transition-fast),
+      background-color var(--transition-fast);
+  }
+}
+
+@media (hover: hover) {
+  .checkbox-card:hover {
+    border-color: var(--color-accent);
+  }
+}
+
+.checkbox-card:has(input:checked) {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-muted);
+}
+
+.checkbox-card input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.checkbox-icon {
+  font-size: var(--font-size-xl);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.checkbox-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Confidence Slider
+   -------------------------------------------------------------------------- */
+
+.slider-container {
+  padding-block: var(--spacing-2);
+}
+
+.confidence-slider {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  outline: none;
+  cursor: pointer;
+}
+
+.confidence-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  cursor: pointer;
+  border: none;
+}
+
+.confidence-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  cursor: pointer;
+  border: none;
+}
+
+.confidence-slider:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-start: var(--spacing-2);
+}
+
+/* --------------------------------------------------------------------------
+   Toggle Switch
+   -------------------------------------------------------------------------- */
+
+.toggle-switch {
+  width: 48px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-border);
+  position: relative;
+  cursor: pointer;
+  border: none;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-switch {
+    transition: background-color var(--transition-fast);
+  }
+}
+
+.toggle-switch.toggle-active {
+  background-color: var(--color-accent);
+}
+
+.toggle-knob {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background-color: white;
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-knob {
+    transition: transform var(--transition-fast);
+  }
+}
+
+.toggle-active .toggle-knob {
+  transform: translateX(24px);
+}
+
+.toggle-switch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Toggle row — label + switch side by side */
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* --------------------------------------------------------------------------
+   Chat ID Input Group
+   -------------------------------------------------------------------------- */
+
+.chat-id-input-group {
+  display: flex;
+  gap: var(--spacing-3);
+}
+
+.chat-id-input-group .filter-input {
+  flex: 1 1 0%;
+}
+
+/* --------------------------------------------------------------------------
+   Settings Actions (Save Button Area)
+   -------------------------------------------------------------------------- */
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding-block-start: var(--spacing-4);
+  border-block-start: 1px solid var(--color-border);
+}
+
+/* ==========================================================================
    Phase 8 — Animations and Transitions
    ========================================================================== */
 
