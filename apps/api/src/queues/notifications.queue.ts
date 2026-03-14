@@ -28,7 +28,7 @@
  * @see {@link https://docs.bullmq.io/} BullMQ documentation
  */
 
-import { Queue } from "bullmq";
+import { Queue, type ConnectionOptions } from "bullmq";
 import { connection } from "./connection.js";
 import { QUEUE_NAMES, DEFAULTS } from "../config/constants.js";
 import { createLogger } from "../lib/logger.js";
@@ -88,10 +88,13 @@ export interface NotificationJobData {
  * - `priority: DEFAULTS.NORMAL_PRIORITY` (10) — Default priority for
  *   standard notifications. Breaking news jobs override this to 1.
  */
-export const notificationsQueue = new Queue<NotificationJobData>(
+export const notificationsQueue = new Queue<NotificationJobData, unknown, string>(
   QUEUE_NAMES.NOTIFICATIONS,
   {
-    connection,
+    // Type assertion resolves ioredis version mismatch between project ioredis
+    // and BullMQ's internal ioredis dependency under exactOptionalPropertyTypes.
+    // Both versions are wire-compatible at runtime.
+    connection: connection as unknown as ConnectionOptions,
     defaultJobOptions: {
       attempts: 5,
       backoff: {
