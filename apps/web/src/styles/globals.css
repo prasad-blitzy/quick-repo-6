@@ -1422,6 +1422,141 @@ a:focus-visible {
 }
 
 /* ==========================================================================
+   Performance Page Component Styles
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Stats Grid — responsive from 2-col → 3-col → 6-col
+   -------------------------------------------------------------------------- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-4);
+  margin-block-end: var(--spacing-6);
+}
+
+@media (min-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .stats-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Stat Card — individual KPI card within the stats grid
+   -------------------------------------------------------------------------- */
+
+.stat-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* --------------------------------------------------------------------------
+   Performance Filters — date range + market filter control bar
+   -------------------------------------------------------------------------- */
+
+.performance-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-4);
+  align-items: flex-end;
+  margin-block-end: var(--spacing-6);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 140px;
+}
+
+.filter-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-select {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-2) var(--spacing-3);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  width: 100%;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a0b8' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-3) center;
+  padding-inline-end: var(--spacing-8);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .filter-select {
+    transition: border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
+  }
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-muted);
+}
+
+.filter-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Market Breakdown — per-market performance section
+   -------------------------------------------------------------------------- */
+
+.market-breakdown {
+  margin-block-start: var(--spacing-6);
+}
+
+.market-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-4);
+  margin-block-start: var(--spacing-4);
+}
+
+.market-card {
+  padding: var(--spacing-4);
+}
+
+.market-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-3);
+  margin-block-start: var(--spacing-3);
+}
+
+.market-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+/* ==========================================================================
    Phase 8 — Animations and Transitions
    ========================================================================== */
 
