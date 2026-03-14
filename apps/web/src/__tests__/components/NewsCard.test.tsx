@@ -73,6 +73,7 @@ function createMockArticle(overrides: Partial<NewsArticle> = {}): NewsArticle {
     publishedAt: '2026-03-13T10:30:00Z',
     metadata: {},
     isAnalyzed: true,
+    sentimentScore: null,
     createdAt: '2026-03-13T10:35:00Z',
     updatedAt: '2026-03-13T10:35:00Z',
     ...overrides,

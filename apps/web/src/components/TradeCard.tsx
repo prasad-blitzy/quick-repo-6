@@ -247,7 +247,7 @@ export default function TradeCard({
         </div>
         <div className="stat">
           <span className="stat-label">Risk:Reward</span>
-          <code className="price">{riskRewardRatio}</code>
+          <code className="price">{riskRewardRatio || '—'}</code>
         </div>
       </div>
 

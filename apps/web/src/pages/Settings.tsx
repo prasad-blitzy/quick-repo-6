@@ -111,8 +111,15 @@ export default function Settings() {
   // State — Chat ID input and editing mode
   // -----------------------------------------------------------------------
 
-  /** The Telegram chat ID entered by the user for settings lookup. */
+  /** The Telegram chat ID text currently in the input field. */
   const [chatId, setChatId] = useState<string>('');
+
+  /**
+   * The "submitted" chat ID that has been confirmed by the user clicking
+   * "Load Settings". Only this value is used in the API URL, preventing
+   * auto-fetch on every keystroke in the chat ID input.
+   */
+  const [submittedChatId, setSubmittedChatId] = useState<string>('');
 
   /** Whether the user has loaded existing settings (editing mode). */
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -123,14 +130,15 @@ export default function Settings() {
 
   /**
    * Fetch user settings from the Express API backend.
-   * Only fetches when a non-empty chat ID is provided (enabled flag).
-   * The useApi hook manages loading state, error handling, and
-   * automatic re-fetch when the URL changes.
+   * Only fetches when a non-empty submittedChatId is provided (enabled flag).
+   * The URL uses submittedChatId (not chatId) to prevent firing API calls
+   * on every keystroke — requests are only made after the user explicitly
+   * clicks "Load Settings".
    */
   const { data: settings, loading, error, refetch } = useApi<UserSettings>(
-    `/settings/${chatId}`,
+    `/settings/${submittedChatId}`,
     {
-      enabled: chatId.length > 0,
+      enabled: submittedChatId.length > 0,
     },
   );
 
@@ -230,7 +238,7 @@ export default function Settings() {
       setSaveError(null);
 
       try {
-        await apiPut(`/settings/${chatId}`, {
+        await apiPut(`/settings/${submittedChatId}`, {
           markets: formState.markets,
           minConfidence: formState.minConfidence,
           timeframes: formState.timeframes,
@@ -248,7 +256,7 @@ export default function Settings() {
         );
       }
     },
-    [chatId, formState],
+    [submittedChatId, formState],
   );
 
   // -----------------------------------------------------------------------
@@ -258,12 +266,19 @@ export default function Settings() {
   /**
    * Manually trigger a settings fetch for the entered chat ID.
    * Used by the "Load Settings" button for explicit user-initiated lookup.
+   * Sets the submittedChatId which triggers the useApi hook to fetch,
+   * or calls refetch() if the same chat ID is being re-fetched.
    */
   const handleLookup = useCallback((): void => {
-    if (chatId.trim()) {
-      refetch();
+    const trimmed = chatId.trim();
+    if (trimmed) {
+      if (trimmed === submittedChatId) {
+        refetch();
+      } else {
+        setSubmittedChatId(trimmed);
+      }
     }
-  }, [chatId, refetch]);
+  }, [chatId, submittedChatId, refetch]);
 
   // -----------------------------------------------------------------------
   // Render

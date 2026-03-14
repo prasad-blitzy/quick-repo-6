@@ -110,6 +110,16 @@ export interface NewsArticle {
    */
   isAnalyzed: boolean;
 
+  /**
+   * Pipeline-computed sentiment score from the sentiment analysis stage.
+   *
+   * Range: -1.000 (very negative) to +1.000 (very positive).
+   * Stored as PostgreSQL `numeric(5,3)` — represented as a string to
+   * preserve decimal precision (AAP Rule 0.7.2). `null` until the
+   * article has been processed by the sentiment analysis pipeline stage.
+   */
+  sentimentScore: string | null;
+
   /** ISO 8601 timestamp of when the database row was created. */
   createdAt: string;
 

@@ -133,6 +133,56 @@ function formatSourceName(source: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Helper — Sentiment Score Display
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts a nullable sentiment score string into a display object with
+ * an emoji indicator, text label, and badge CSS class.
+ *
+ * Sentiment scores are stored as PostgreSQL `numeric(5,3)` mapped to
+ * `string | null` in the shared `NewsArticle` type. The score ranges
+ * from -1.000 (very negative) to +1.000 (very positive).
+ *
+ * Per AAP Rule 0.7.3: negative financial news has 2–3x the market
+ * impact of positive news, reflected in the wider negative threshold.
+ *
+ * | Score Range       | Display            | Badge Class     |
+ * |-------------------|--------------------|-----------------|
+ * | ≥ 0.300           | 📈 Bullish         | badge-success   |
+ * | 0.050 to 0.299    | 🟢 Positive        | badge-success   |
+ * | -0.049 to 0.049   | ➡️ Neutral         | badge-neutral   |
+ * | -0.299 to -0.050  | 🔴 Negative        | badge-danger    |
+ * | ≤ -0.300          | 📉 Bearish         | badge-danger    |
+ * | null              | (not displayed)    | —               |
+ *
+ * @param score — Sentiment score as a string or null.
+ * @returns Display object or null if score is not available.
+ */
+function getSentimentDisplay(
+  score: string | null,
+): { emoji: string; label: string; badgeClass: string } | null {
+  if (score === null || score === '') return null;
+
+  const numericScore = parseFloat(score);
+  if (Number.isNaN(numericScore)) return null;
+
+  if (numericScore >= 0.3) {
+    return { emoji: '📈', label: 'Bullish', badgeClass: 'badge-success' };
+  }
+  if (numericScore >= 0.05) {
+    return { emoji: '🟢', label: 'Positive', badgeClass: 'badge-success' };
+  }
+  if (numericScore > -0.05) {
+    return { emoji: '➡️', label: 'Neutral', badgeClass: 'badge-neutral' };
+  }
+  if (numericScore > -0.3) {
+    return { emoji: '🔴', label: 'Negative', badgeClass: 'badge-danger' };
+  }
+  return { emoji: '📉', label: 'Bearish', badgeClass: 'badge-danger' };
+}
+
+// ---------------------------------------------------------------------------
 // NewsCard Component
 // ---------------------------------------------------------------------------
 
@@ -142,7 +192,8 @@ function formatSourceName(source: string): string {
  * Renders a dark-themed card using the `.card` base class from `globals.css`
  * with a fade-in entrance animation. The card is divided into three sections:
  *
- * 1. **Header** — Source badge, market label badge, and relative timestamp.
+ * 1. **Header** — Source badge, market label badge, sentiment badge, and
+ *    relative timestamp.
  * 2. **Body** — Article title and 3-line-clamped content snippet.
  * 3. **Footer** — Ticker symbol badges, analysis status indicator, and an
  *    external "Read →" link.
@@ -167,6 +218,7 @@ export default function NewsCard({ article, className }: NewsCardProps) {
   const sourceBadgeClass = getSourceBadgeClass(article.source);
   const sourceName = formatSourceName(article.source);
   const marketLabel = getMarketLabel(article.market);
+  const sentimentDisplay = getSentimentDisplay(article.sentimentScore);
 
   return (
     <article
@@ -185,6 +237,16 @@ export default function NewsCard({ article, className }: NewsCardProps) {
           <span className="badge badge-neutral">
             {marketLabel}
           </span>
+
+          {/* Sentiment badge — shown only when sentimentScore is non-null */}
+          {sentimentDisplay !== null && (
+            <span
+              className={clsx('badge', sentimentDisplay.badgeClass)}
+              title={`Sentiment: ${article.sentimentScore ?? 'N/A'}`}
+            >
+              {sentimentDisplay.emoji} {sentimentDisplay.label}
+            </span>
+          )}
         </div>
 
         {/* Relative timestamp */}
