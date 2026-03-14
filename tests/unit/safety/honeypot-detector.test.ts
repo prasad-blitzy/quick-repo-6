@@ -189,6 +189,18 @@ describe('HoneypotDetector', () => {
         'ExactIn',
       );
     });
+
+    it('should return quotedAmount parsed from Jupiter quote outAmount', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient(
+        createValidQuote({ outAmount: '150000000' }),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.quotedAmount).toBe(150000000);
+    });
   });
 
   // ===========================================================================
@@ -214,6 +226,16 @@ describe('HoneypotDetector', () => {
       const result = await detector.checkHoneypot(TEST_MINT);
 
       expect(result.estimatedTax).toBe(100);
+    });
+
+    it('should return quotedAmount undefined when quote is null (no route)', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient(null);
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.quotedAmount).toBeUndefined();
     });
   });
 
@@ -349,6 +371,57 @@ describe('HoneypotDetector', () => {
 
       expect(result.error).toBeDefined();
       expect(typeof result.error).toBe('string');
+    });
+
+    it('should handle INSUFFICIENT_LIQUIDITY error gracefully', async () => {
+      vi.useRealTimers();
+      (mockJupiter.getQuote as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('INSUFFICIENT_LIQUIDITY'),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.sellable).toBe(false);
+      expect(result.estimatedTax).toBe(100);
+    });
+
+    it('should handle No route found for swap error gracefully', async () => {
+      vi.useRealTimers();
+      (mockJupiter.getQuote as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('No route found for swap'),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.sellable).toBe(false);
+      expect(result.estimatedTax).toBe(100);
+    });
+
+    it('should handle TypeError (Failed to fetch) as network error', async () => {
+      vi.useRealTimers();
+      (mockJupiter.getQuote as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new TypeError('Failed to fetch'),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.sellable).toBe(false);
+      expect(result.estimatedTax).toBe(100);
+    });
+
+    it('should return quotedAmount undefined when getQuote rejects', async () => {
+      vi.useRealTimers();
+      (mockJupiter.getQuote as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('No route found'),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.quotedAmount).toBeUndefined();
     });
   });
 
@@ -513,6 +586,54 @@ describe('HoneypotDetector', () => {
       expect(result).toBeDefined();
       expect(typeof result.sellable).toBe('boolean');
     });
+
+    it('should flag very high price impact (80%) with very high estimated tax', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient(
+        createValidQuote({ priceImpactPct: '80.0' }),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      // 80% impact exceeds HIGH_PRICE_IMPACT_THRESHOLD (50)
+      // estimatedTax = max(calculateEstimatedTax, priceImpact) = max(77, 80) = 80
+      expect(result.sellable).toBe(true);
+      expect(result.estimatedTax).toBeGreaterThanOrEqual(50);
+      if (result.priceImpactPct !== undefined) {
+        expect(result.priceImpactPct).toBeGreaterThanOrEqual(80);
+      }
+    });
+
+    it('should handle moderate price impact (5-20%) with moderate tax estimate', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient(
+        createValidQuote({ priceImpactPct: '12.0' }),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      expect(result.sellable).toBe(true);
+      // 12% impact: impactDerivedTax = max(0, 12 - 3) = 9
+      expect(result.estimatedTax).toBeGreaterThan(5);
+      expect(result.estimatedTax).toBeLessThan(20);
+    });
+
+    it('should parse priceImpactPct from string to number correctly', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient(
+        createValidQuote({ priceImpactPct: '3.14159' }),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      // 3.14% impact ≤ 5% normal threshold → estimatedTax = 0
+      expect(result.sellable).toBe(true);
+      expect(Number.isNaN(result.estimatedTax)).toBe(false);
+      expect(result.estimatedTax).toBe(0);
+    });
   });
 
   // ===========================================================================
@@ -580,6 +701,50 @@ describe('HoneypotDetector', () => {
       const result = await detector.checkHoneypot(TEST_MINT);
 
       expect(Number.isNaN(result.estimatedTax)).toBe(false);
+    });
+
+    it('should treat priceImpactPct as part of effective tax calculation', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient(
+        createValidQuote({ priceImpactPct: '15.0' }),
+      );
+      detector = new HoneypotDetector(mockJupiter);
+
+      const result = await detector.checkHoneypot(TEST_MINT);
+
+      // 15% price impact exceeds 5% normal threshold
+      // estimatedTax = max(0, 15 - 3) = 12 (impact derived) or higher from route fees
+      expect(result.estimatedTax).toBeGreaterThanOrEqual(12);
+    });
+
+    it('should map tax ranges correctly per implementation thresholds', async () => {
+      vi.useRealTimers();
+
+      // 0-5% effective tax: Normal (slippage + DEX fees) → estimatedTax = 0
+      let client = createMockJupiterClient(createValidQuote({ priceImpactPct: '3.0' }));
+      let det = new HoneypotDetector(client);
+      let result = await det.checkHoneypot(TEST_MINT);
+      expect(result.estimatedTax).toBe(0);
+
+      // 5-20%: Suspicious → estimatedTax moderate (e.g., 15% impact → tax ≈ 12)
+      client = createMockJupiterClient(createValidQuote({ priceImpactPct: '15.0' }));
+      det = new HoneypotDetector(client);
+      result = await det.checkHoneypot(TEST_MINT);
+      expect(result.estimatedTax).toBeGreaterThan(0);
+      expect(result.estimatedTax).toBeLessThanOrEqual(20);
+
+      // 20-50%: High risk → estimatedTax elevated (e.g., 35% impact → tax ≈ 32)
+      client = createMockJupiterClient(createValidQuote({ priceImpactPct: '35.0' }));
+      det = new HoneypotDetector(client);
+      result = await det.checkHoneypot(TEST_MINT);
+      expect(result.estimatedTax).toBeGreaterThan(20);
+      expect(result.estimatedTax).toBeLessThan(50);
+
+      // 50-100%: Critical → estimatedTax very high (≥50)
+      client = createMockJupiterClient(createValidQuote({ priceImpactPct: '75.0' }));
+      det = new HoneypotDetector(client);
+      result = await det.checkHoneypot(TEST_MINT);
+      expect(result.estimatedTax).toBeGreaterThanOrEqual(50);
     });
   });
 
@@ -700,6 +865,22 @@ describe('HoneypotDetector', () => {
       // First argument = inputMint (TOKEN), second = outputMint (SOL)
       expect(call?.[0]).toBe(TEST_MINT);
       expect(call?.[1]).toBe(SOL_MINT);
+    });
+
+    it('should use default test amount (DEFAULT_TEST_AMOUNT) when none specified', async () => {
+      vi.useRealTimers();
+      mockJupiter = createMockJupiterClient();
+      detector = new HoneypotDetector(mockJupiter);
+
+      await detector.checkHoneypot(TEST_MINT);
+
+      // Verify the exact default test amount constant is used
+      expect(mockJupiter.getQuote).toHaveBeenCalledWith(
+        TEST_MINT,
+        SOL_MINT,
+        DEFAULT_TEST_AMOUNT,
+        'ExactIn',
+      );
     });
   });
 });
