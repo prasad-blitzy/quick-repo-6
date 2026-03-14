@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# WXT output
+.output/
+.wxt/
+dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
