@@ -208,6 +208,9 @@ const eslintConfig = [
   // - Mocking libraries often require `any` for flexible mock types
   // - Console logging is useful for test debugging and CI output
   // - Test assertions may need loose typing for edge case validation
+  // - Test files are excluded from app tsconfig.json ("exclude": ["tests/**"])
+  //   so project-based type-aware linting is disabled here to prevent
+  //   "file not found in any of the provided project(s)" parser errors.
   {
     files: [
       '**/*.test.ts',
@@ -216,6 +219,14 @@ const eslintConfig = [
       '**/*.spec.tsx',
       '**/tests/**/*.ts',
     ],
+    languageOptions: {
+      parserOptions: {
+        // Disable project-based type-aware linting for test files because
+        // per-app tsconfig.json files exclude test directories. Without this
+        // override, ESLint throws "file not found in any provided project(s)".
+        project: false,
+      },
+    },
     rules: {
       // Allow `any` in test files for mock object construction and
       // flexible assertion patterns
