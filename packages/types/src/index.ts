@@ -10,17 +10,17 @@
  * ```
  *
  * Module inventory:
- * - `news.ts`  — Market enum, NewsArticle, NewsSource interfaces
- * - `api.ts`   — ApiResponse, PaginatedResponse, PaginationParams, ApiErrorResponse
- * - `trade.ts` — Direction, Timeframe, OpportunityStatus enums; TradeOpportunity, TradePerformance
+ * - `news.ts`  — Market enum, NewsArticle interface, NewsSource interface
+ * - `trade.ts` — Direction, Timeframe, OpportunityStatus enums; TradeOpportunity, TradePerformance interfaces
  * - `user.ts`  — UserSettings, NotificationPreference interfaces
- * - `queue.ts` — QueueName, *JobData, *JobResult types for all 3 BullMQ queues
+ * - `api.ts`   — ApiResponse, PaginatedResponse, PaginationMeta, PaginationParams, ApiErrorResponse
+ * - `queue.ts` — NewsPollingPayload, AnalysisPayload, NotificationPayload interfaces
  *
  * @module @trading-intelligence/types
  */
 
 export * from './news.js';
-export * from './api.js';
 export * from './trade.js';
 export * from './user.js';
+export * from './api.js';
 export * from './queue.js';
