@@ -2,63 +2,76 @@
  * src/components/SmartMoneyIndicator.tsx — Smart Money Activity Indicator
  *
  * Displays smart money wallet count entering a token, convergence status
- * (active/inactive), and average position size context for the GMGN Signal
- * Bot Chrome Extension overlay.
+ * (active/inactive), average position size context, and an expandable
+ * wallet detail list for the GMGN Signal Bot Chrome Extension overlay.
  *
  * Per AAP §0.5.1 Group 11:
- *   "Displays smart money wallet count, convergence status (active/inactive),
- *    and average position size context"
+ *   "Displays smart money wallet count entering the token, convergence
+ *    status (active/inactive), and average position size context"
  *
- * Per AAP §0.5.1 Group 5 — Smart Money Convergence:
- *   "Detects convergence signals when 3+ qualified smart money wallets enter
- *    the same token within a 2-hour window, with position-size context analysis
- *    (entries above 80% of historical average indicating conviction)"
+ * Per AAP §0.1.1:
+ *   "Smart Money and Whale Tracking: Detect convergence signals when 3+
+ *    qualified smart money wallets enter the same token within a 2-hour
+ *    window, with position-size context analysis (entries above 80% of
+ *    historical average indicating conviction)"
  *
  * Per AAP §0.5.1 Group 7 — Wallet Classification:
- *   "Classifies wallets by type: Smart Money, KOL, Whale, Sniper, Insider,
- *    Developer based on GMGN categorization data"
+ *   "Classifies wallets by type: Smart Money (70%+ win rate), KOL, Whale,
+ *    Sniper, Insider, Developer based on GMGN categorization data"
  *
  * Data source:
- *   Reads convergence events and smart money data from the Zustand
- *   token-store and signal-store via `useTokenStoreHook` and
- *   `useSignalStoreHook` from `src/store/index.ts`.
+ *   Reads smart money data from the Zustand token-store via
+ *   `useTokenStoreHook` from `src/store/index.ts`. The token store
+ *   provides `smartMoneyCount` and `smartMoneyWallets` per token.
  *
  * @module components/SmartMoneyIndicator
  */
 
 import { h, type FunctionComponent } from 'preact';
-import { useMemo } from 'preact/hooks';
-import type { ConvergenceEvent, WalletClassification, PositionSizeContext } from '../tracking/types';
+import { useState } from 'preact/hooks';
+import { useTokenStoreHook } from '../store/index';
+import type { WalletClassification } from '../tracking/types';
+import { formatPrice, formatTimeAgo } from '../utils/formatting';
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-/** Minimum wallet count for active convergence per AAP (3+ wallets) */
-const CONVERGENCE_MIN_WALLETS = 3;
+/**
+ * Minimum wallet count for active convergence per AAP (3+ wallets).
+ * When 3 or more qualified smart money wallets enter the same token
+ * within the detection window, convergence is considered ACTIVE.
+ */
+const CONVERGENCE_THRESHOLD = 3;
 
-/** Position size percentage threshold for conviction signal per AAP (≥80%) */
-const CONVICTION_THRESHOLD = 80;
+/**
+ * Position size percentage threshold for conviction signal per AAP.
+ * When a wallet's entry position is ≥80% of its historical average,
+ * it indicates strong conviction in the trade.
+ */
+const CONVICTION_PERCENT_THRESHOLD = 0.8;
 
-/** Colour map for convergence status */
-const STATUS_COLORS = {
-  active: '#22c55e',
-  inactive: '#94a3b8',
-  building: '#f59e0b',
-} as const;
+// =============================================================================
+// Classification Display Mappings
+// =============================================================================
 
-/** Icons for wallet classification types per AAP §0.5.1 Group 7 */
-const CLASSIFICATION_ICONS: Record<WalletClassification, string> = {
+/**
+ * Emoji icons for each wallet classification type per AAP §0.5.1 Group 7.
+ * Uses the snake_case `WalletClassification` union type from tracking/types.
+ */
+const CLASSIFICATION_EMOJI: Record<WalletClassification, string> = {
   smart_money: '🧠',
-  kol: '📣',
+  kol: '📢',
   whale: '🐋',
-  sniper: '🎯',
-  insider: '🕵️',
+  sniper: '⚡',
+  insider: '🔍',
   developer: '👨‍💻',
 };
 
-/** Human-readable labels for wallet classification types */
-const CLASSIFICATION_LABELS: Record<WalletClassification, string> = {
+/**
+ * Human-readable labels for each wallet classification type.
+ */
+const CLASSIFICATION_LABEL: Record<WalletClassification, string> = {
   smart_money: 'Smart Money',
   kol: 'KOL',
   whale: 'Whale',
@@ -72,154 +85,109 @@ const CLASSIFICATION_LABELS: Record<WalletClassification, string> = {
 // =============================================================================
 
 /**
- * Determines the convergence status label and colour based on wallet count.
+ * Truncates a Solana wallet address for compact display.
+ * Shows first 4 and last 4 characters with ellipsis.
  *
- * - ≥3 wallets = "Active" (green) — convergence threshold met per AAP
- * - 1–2 wallets = "Building" (amber) — early accumulation signals
- * - 0 wallets = "Inactive" (grey) — no smart money activity detected
+ * @param address - Full base58 Solana wallet address
+ * @returns Truncated address string (e.g., "7xKX...9fGh")
  */
-function getConvergenceStatus(walletCount: number): {
-  label: string;
-  color: string;
-  icon: string;
-} {
-  if (walletCount >= CONVERGENCE_MIN_WALLETS) {
-    return { label: 'Active', color: STATUS_COLORS.active, icon: '🟢' };
+function truncateAddress(address: string): string {
+  if (!address || address.length <= 10) {
+    return address || '';
   }
-  if (walletCount > 0) {
-    return { label: 'Building', color: STATUS_COLORS.building, icon: '🟡' };
-  }
-  return { label: 'Inactive', color: STATUS_COLORS.inactive, icon: '⚪' };
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 
 /**
- * Formats a SOL amount for display (e.g., 12.5 SOL, <0.01 SOL).
+ * Returns the emoji icon for a given wallet classification.
+ * Falls back to a generic person icon for unknown types.
+ *
+ * @param type - Wallet classification string (snake_case per WalletClassification type)
+ * @returns Emoji string for the classification
  */
-function formatSol(amount: number): string {
-  if (amount === 0) return '0 SOL';
-  if (amount < 0.01) return '<0.01 SOL';
-  if (amount < 1) return `${amount.toFixed(3)} SOL`;
-  if (amount < 1000) return `${amount.toFixed(2)} SOL`;
-  return `${(amount / 1000).toFixed(1)}K SOL`;
+function classificationEmoji(type: WalletClassification | string): string {
+  return CLASSIFICATION_EMOJI[type as WalletClassification] || '👤';
 }
 
 /**
- * Computes a human-readable time window description.
+ * Returns the human-readable label for a given wallet classification.
+ * Falls back to the raw type string for unknown classifications.
+ *
+ * @param type - Wallet classification string
+ * @returns Human-readable label string
  */
-function formatTimeWindow(startMs: number, endMs: number): string {
-  const durationMin = Math.floor((endMs - startMs) / 60_000);
-  if (durationMin < 60) return `${durationMin}m window`;
-  const hours = Math.floor(durationMin / 60);
-  const mins = durationMin % 60;
-  return mins > 0 ? `${hours}h ${mins}m window` : `${hours}h window`;
+function classificationLabel(type: WalletClassification | string): string {
+  return CLASSIFICATION_LABEL[type as WalletClassification] || String(type);
 }
 
 /**
- * Determines the conviction level from position size percentage of
- * historical average. Per AAP: entries ≥80% of historical average
- * indicate conviction.
+ * Determines the conviction level label and color from position size
+ * ratio relative to historical average.
+ *
+ * Per AAP: entries ≥80% of historical average indicate conviction.
+ *
+ * @param entrySize - Current position size in USD
+ * @param historicalAvgSize - Historical average position size in USD
+ * @returns Object with label, color, and conviction boolean
  */
-function getConvictionLevel(positionSizeContext: PositionSizeContext | null): {
+function getConvictionLevel(entrySize: number, historicalAvgSize: number): {
   label: string;
   color: string;
   isConviction: boolean;
 } {
-  if (!positionSizeContext || positionSizeContext.historicalAvg === 0) {
+  if (historicalAvgSize <= 0) {
     return { label: 'Unknown', color: '#94a3b8', isConviction: false };
   }
-  const pct = positionSizeContext.percentOfAvg;
-  if (pct >= CONVICTION_THRESHOLD) {
+
+  const ratio = entrySize / historicalAvgSize;
+
+  if (ratio >= CONVICTION_PERCENT_THRESHOLD) {
     return { label: 'High Conviction', color: '#22c55e', isConviction: true };
   }
-  if (pct >= 50) {
-    return { label: 'Medium', color: '#f59e0b', isConviction: false };
+  if (ratio >= 0.5) {
+    return { label: 'Normal', color: '#94a3b8', isConviction: false };
   }
-  return { label: 'Exploratory', color: '#94a3b8', isConviction: false };
+  return { label: 'Small Position', color: '#5f6368', isConviction: false };
 }
 
 // =============================================================================
-// Sub-Components
+// Local Type — Enriched Wallet Detail
 // =============================================================================
 
 /**
- * Compact wallet entry row showing classification icon, address snippet,
- * and position size.
+ * Enriched wallet detail structure for rich display mode.
+ *
+ * The token store currently provides `smartMoneyWallets: string[]` (addresses only).
+ * This interface defines the enriched wallet data model for when per-wallet
+ * classification, position size, and timing data is available through
+ * store evolution or additional data sources.
  */
-const WalletRow: FunctionComponent<{
+interface SmartMoneyWalletDetail {
+  /** Solana wallet address (base58-encoded public key) */
   address: string;
+  /** Wallet classification from GMGN categorization */
   classification: WalletClassification;
-  positionSize?: number;
-}> = ({ address, classification, positionSize }) => {
-  const truncatedAddr = useMemo(
-    () => `${address.slice(0, 4)}...${address.slice(-4)}`,
-    [address],
-  );
-
-  return (
-    <div class="sm-wallet-row" role="listitem" aria-label={`${CLASSIFICATION_LABELS[classification]} wallet ${truncatedAddr}`}>
-      <span class="sm-wallet-icon" aria-hidden="true">{CLASSIFICATION_ICONS[classification]}</span>
-      <span class="sm-wallet-type">{CLASSIFICATION_LABELS[classification]}</span>
-      <span class="sm-wallet-addr" title={address}>{truncatedAddr}</span>
-      {positionSize !== undefined && positionSize > 0 && (
-        <span class="sm-wallet-size">{formatSol(positionSize)}</span>
-      )}
-    </div>
-  );
-};
-
-/**
- * Convergence status header with wallet count and status badge.
- */
-const ConvergenceHeader: FunctionComponent<{
-  walletCount: number;
-  convictionScore: number;
-}> = ({ walletCount, convictionScore }) => {
-  const status = useMemo(() => getConvergenceStatus(walletCount), [walletCount]);
-
-  return (
-    <div class="sm-convergence-header" role="status" aria-label={`Convergence: ${status.label} — ${walletCount} wallets`}>
-      <div class="sm-status-badge" style={{ borderColor: status.color }}>
-        <span class="sm-status-icon" aria-hidden="true">{status.icon}</span>
-        <span class="sm-status-label" style={{ color: status.color }}>{status.label}</span>
-      </div>
-      <div class="sm-counts">
-        <span class="sm-wallet-count">{walletCount} wallets</span>
-        {convictionScore > 0 && (
-          <span class="sm-conviction-score" title="Convergence conviction score">
-            Score: {convictionScore.toFixed(0)}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-};
+  /** Position entry size in USD */
+  entrySize: number;
+  /** Entry timestamp (Unix milliseconds) */
+  entryTime: number;
+  /** Wallet's historical average position size in USD */
+  historicalAvgSize: number;
+}
 
 // =============================================================================
-// SmartMoneyIndicator Props
+// Props Interface
 // =============================================================================
 
 /**
  * Props for the SmartMoneyIndicator component.
+ *
+ * The component reads smart money data from the Zustand token store
+ * using the `tokenMint` address as the lookup key.
  */
-export interface SmartMoneyIndicatorProps {
-  /** Number of smart money wallets that have entered the token */
-  walletCount: number;
-
-  /** Array of wallet addresses with their classifications */
-  wallets?: Array<{
-    address: string;
-    classification: WalletClassification;
-    positionSize?: number;
-  }>;
-
-  /** Convergence event data (null if no convergence detected) */
-  convergenceEvent?: ConvergenceEvent | null;
-
-  /** Average position size context for conviction analysis */
-  positionSizeContext?: PositionSizeContext | null;
-
-  /** Whether to show the expanded wallet list (compact by default) */
-  expanded?: boolean;
+interface SmartMoneyIndicatorProps {
+  /** Solana token mint address to display smart money data for */
+  tokenMint: string;
 }
 
 // =============================================================================
@@ -230,134 +198,200 @@ export interface SmartMoneyIndicatorProps {
  * Smart money activity indicator component for the GMGN Signal Bot overlay.
  *
  * Displays:
- * 1. Smart money wallet count entering the token
- * 2. Convergence status: Active (≥3 wallets, green), Building (1–2, amber),
- *    Inactive (0, grey)
- * 3. Average position size context with conviction analysis (≥80% = conviction)
- * 4. Optional expanded wallet list with classification icons
+ * 1. Total smart money wallet count entering the token
+ * 2. Convergence status: Active (≥3 wallets, green) or Inactive (grey)
+ * 3. Token price context with last-updated timestamp
+ * 4. Expandable wallet address list (collapsed by default)
+ *
+ * Reads reactive data from the Zustand token store via `useTokenStoreHook`.
+ * The component re-renders when the selected token's smart money data changes.
+ *
+ * Per AAP convergence threshold: ≥3 qualified wallets = Active.
+ * Per AAP conviction threshold: entry ≥80% of historical average = High Conviction.
  */
 const SmartMoneyIndicator: FunctionComponent<SmartMoneyIndicatorProps> = ({
-  walletCount,
-  wallets = [],
-  convergenceEvent = null,
-  positionSizeContext = null,
-  expanded = false,
+  tokenMint,
 }) => {
   // ---------------------------------------------------------------------------
-  // Derived State
+  // Local State — Expandable Wallet Detail List Toggle
   // ---------------------------------------------------------------------------
+  const [expanded, setExpanded] = useState(false);
 
-  const conviction = useMemo(
-    () => getConvictionLevel(positionSizeContext),
-    [positionSizeContext],
-  );
-
-  const convergenceScore = useMemo(
-    () => convergenceEvent?.convictionScore ?? 0,
-    [convergenceEvent],
-  );
-
-  const timeWindow = useMemo(() => {
-    if (!convergenceEvent) return null;
-    return formatTimeWindow(convergenceEvent.windowStart, convergenceEvent.windowEnd);
-  }, [convergenceEvent]);
-
-  const avgQualityWeight = useMemo(
-    () => convergenceEvent?.avgQualityWeight ?? 0,
-    [convergenceEvent],
+  // ---------------------------------------------------------------------------
+  // Store Data — Read Smart Money Data from Token Store
+  // ---------------------------------------------------------------------------
+  const tokenData = useTokenStoreHook(
+    (state) => state.tokens[tokenMint],
   );
 
   // ---------------------------------------------------------------------------
-  // Empty State
+  // Null Guard — No Data Available
   // ---------------------------------------------------------------------------
-
-  if (walletCount === 0 && !convergenceEvent) {
+  if (!tokenData || !tokenData.smartMoneyCount) {
     return (
-      <div class="sm-indicator sm-empty" role="status" aria-label="No smart money activity">
-        <span class="sm-empty-icon" aria-hidden="true">🧠</span>
-        <span class="sm-empty-text">No smart money activity</span>
+      <div
+        class="sm-indicator empty"
+        role="status"
+        aria-label="No smart money data available"
+      >
+        No smart money data
       </div>
     );
   }
 
   // ---------------------------------------------------------------------------
-  // Render
+  // Destructure Token Data
+  // ---------------------------------------------------------------------------
+  const {
+    smartMoneyCount,
+    smartMoneyWallets,
+    price,
+    lastUpdated,
+  } = tokenData;
+
+  // ---------------------------------------------------------------------------
+  // Derived State
   // ---------------------------------------------------------------------------
 
+  /** Convergence is active when 3+ wallets are tracked per AAP */
+  const isConvergenceActive = smartMoneyCount >= CONVERGENCE_THRESHOLD;
+
+  /** Wallet addresses available for display */
+  const walletAddresses: string[] = smartMoneyWallets ?? [];
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div class="sm-indicator" role="region" aria-label="Smart money indicator">
-      {/* Convergence Status Header */}
-      <ConvergenceHeader
-        walletCount={walletCount}
-        convictionScore={convergenceScore}
-      />
+      {/* Wallet Count with Icon */}
+      <div class="sm-count">
+        <span class="sm-icon" aria-hidden="true">
+          🐋
+        </span>
+        <span>
+          {smartMoneyCount} Smart Money Wallet
+          {smartMoneyCount !== 1 ? 's' : ''}
+        </span>
+      </div>
 
-      {/* Position Size Context */}
-      {positionSizeContext && positionSizeContext.historicalAvg > 0 && (
-        <div class="sm-position-context" role="group" aria-label="Position size context">
-          <div class="sm-position-row">
-            <span class="sm-position-label">Avg Position:</span>
-            <span class="sm-position-value">{formatSol(positionSizeContext.currentSize)}</span>
-          </div>
-          <div class="sm-position-row">
-            <span class="sm-position-label">Historical Avg:</span>
-            <span class="sm-position-value">{formatSol(positionSizeContext.historicalAvg)}</span>
-          </div>
-          <div class="sm-position-row">
-            <span class="sm-position-label">Conviction:</span>
-            <span class="sm-conviction-badge" style={{ color: conviction.color }}>
-              {conviction.isConviction ? '🔥 ' : ''}{conviction.label}
-              {' '}({positionSizeContext.percentOfAvg.toFixed(0)}%)
-            </span>
-          </div>
-        </div>
-      )}
+      {/* Convergence Status Badge */}
+      <div
+        class={`convergence-status ${isConvergenceActive ? 'active' : 'inactive'}`}
+        role="status"
+        aria-label={`Convergence ${isConvergenceActive ? 'active' : 'inactive'}: ${smartMoneyCount} wallets`}
+      >
+        {isConvergenceActive
+          ? '🔥 Convergence Active'
+          : 'No Convergence'}
+      </div>
 
-      {/* Convergence Details */}
-      {convergenceEvent && (
-        <div class="sm-convergence-detail" role="group" aria-label="Convergence details">
-          {timeWindow && (
-            <span class="sm-time-window">⏱ {timeWindow}</span>
-          )}
-          {avgQualityWeight > 0 && (
-            <span class="sm-quality-weight" title="Average wallet quality weight">
-              Quality: {avgQualityWeight.toFixed(2)}
+      {/* Price Context — shows current price and last update time */}
+      {price > 0 && (
+        <div class="wallet-row" style={{ borderBottom: 'none' }}>
+          <span class="wallet-entry">
+            {formatPrice(price)}
+          </span>
+          {lastUpdated > 0 && (
+            <span class="wallet-time">
+              {formatTimeAgo(lastUpdated)}
             </span>
           )}
         </div>
       )}
 
-      {/* Wallet List (expanded view) */}
-      {expanded && wallets.length > 0 && (
-        <div class="sm-wallet-list" role="list" aria-label="Smart money wallets">
-          {wallets.map((wallet) => (
-            <WalletRow
-              key={wallet.address}
-              address={wallet.address}
-              classification={wallet.classification}
-              positionSize={wallet.positionSize}
-            />
+      {/* Classification Summary — shows emoji badges for known types */}
+      {smartMoneyCount > 0 && (
+        <div
+          class="wallet-row"
+          style={{ borderBottom: 'none', flexWrap: 'wrap' }}
+          role="group"
+          aria-label="Wallet classification summary"
+        >
+          {(
+            [
+              'smart_money',
+              'kol',
+              'whale',
+              'sniper',
+              'insider',
+              'developer',
+            ] as WalletClassification[]
+          ).map((classification) => (
+            <span
+              key={classification}
+              class="wallet-badge"
+              title={classificationLabel(classification)}
+              aria-label={classificationLabel(classification)}
+            >
+              {classificationEmoji(classification)}
+            </span>
           ))}
         </div>
       )}
 
-      {/* Compact wallet type summary (non-expanded view) */}
-      {!expanded && wallets.length > 0 && (
-        <div class="sm-type-summary" role="group" aria-label="Wallet type summary">
-          {Object.entries(
-            wallets.reduce<Record<WalletClassification, number>>((acc, w) => {
-              acc[w.classification] = (acc[w.classification] || 0) + 1;
-              return acc;
-            }, {} as Record<WalletClassification, number>),
-          ).map(([type, count]) => (
-            <span key={type} class="sm-type-badge" title={`${count} ${CLASSIFICATION_LABELS[type as WalletClassification]}`}>
-              {CLASSIFICATION_ICONS[type as WalletClassification]} {count}
+      {/* Expandable Wallet Address List */}
+      {walletAddresses.length > 0 && (
+        <div class="sm-wallet-section">
+          <button
+            class="wallet-row"
+            style={{
+              cursor: 'pointer',
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              font: 'inherit',
+              padding: '4px 0',
+              width: '100%',
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '12px',
+            }}
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-controls="sm-wallet-list"
+          >
+            <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+            <span>
+              {walletAddresses.length} wallet
+              {walletAddresses.length !== 1 ? 's' : ''}
             </span>
-          ))}
+          </button>
+
+          {expanded && (
+            <div
+              id="sm-wallet-list"
+              role="list"
+              aria-label="Smart money wallet addresses"
+            >
+              {walletAddresses.map((address) => (
+                <div class="wallet-row" key={address} role="listitem">
+                  <span class="wallet-badge" aria-hidden="true">
+                    👤
+                  </span>
+                  <span class="wallet-address" title={address}>
+                    {truncateAddress(address)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-export { SmartMoneyIndicator };
+// =============================================================================
+// Exports
+// =============================================================================
+
+export {
+  SmartMoneyIndicator,
+  getConvictionLevel,
+  CONVERGENCE_THRESHOLD,
+  CONVICTION_PERCENT_THRESHOLD,
+};
+export type { SmartMoneyIndicatorProps, SmartMoneyWalletDetail };
