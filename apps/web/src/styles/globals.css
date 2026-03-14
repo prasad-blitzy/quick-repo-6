@@ -956,6 +956,135 @@ a:focus-visible {
   color: var(--color-text-secondary);
 }
 
+/* ==========================================================================
+   Sidebar Navigation Component
+   ========================================================================== */
+
+/* Sidebar container — fixed left panel */
+.sidebar {
+  width: var(--sidebar-width);
+  height: 100vh;
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  background-color: var(--color-surface);
+  border-inline-end: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-4);
+  overflow-y: auto;
+  z-index: 40;
+}
+
+/* Sidebar header — branding + health indicator */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block-end: var(--spacing-4);
+  margin-block-end: var(--spacing-4);
+  border-block-end: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+  line-height: var(--line-height-tight);
+}
+
+/* Navigation link list container */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+}
+
+/* Individual navigation link */
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  margin-block-end: var(--spacing-1);
+}
+
+@media (hover: hover) {
+  .sidebar-link:hover {
+    background-color: var(--color-surface-hover);
+    color: var(--color-text-primary);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-link {
+    transition: background-color var(--transition-fast),
+      color var(--transition-fast);
+  }
+}
+
+/* Active (current route) link */
+.sidebar-link-active {
+  background-color: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Icon slot inside a nav link */
+.sidebar-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* Focus-visible ring for keyboard navigation (WCAG 2.4.7) */
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Hamburger toggle button — hidden on desktop by default */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  inset-block-start: var(--spacing-3);
+  inset-inline-start: var(--spacing-3);
+  z-index: 50;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xl);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .sidebar-toggle:hover {
+    background-color: var(--color-surface-hover);
+  }
+}
+
 /* Mobile sidebar overlay */
 .sidebar-overlay {
   display: none;
@@ -967,6 +1096,42 @@ a:focus-visible {
 
 .sidebar-overlay.active {
   display: block;
+}
+
+/* --------------------------------------------------------------------------
+   Mobile breakpoint (< 768 px): sidebar off-screen, toggle visible
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .sidebar {
+      transition: transform var(--transition-slow);
+    }
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-toggle {
+    display: flex;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Desktop (≥ 769 px): sidebar always visible, toggle + overlay hidden
+   -------------------------------------------------------------------------- */
+@media (min-width: 769px) {
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar-overlay {
+    display: none !important;
+  }
 }
 
 /* Mobile breakpoint: 768px — sidebar collapse and layout adjustments */
