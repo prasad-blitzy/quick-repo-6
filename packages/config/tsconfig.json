@@ -1,3 +1,13 @@
 {
-  "extends": "../../tsconfig.base.json"
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "allowJs": true
+  },
+  "include": ["eslint.js"],
+  "exclude": ["node_modules", "dist"]
 }
