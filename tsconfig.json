@@ -1,22 +1,27 @@
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["chrome"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@/signals/*": ["./src/signals/*"],
       "@/api/*": ["./src/api/*"],
-      "@/store/*": ["./src/store/*"],
-      "@/components/*": ["./src/components/*"],
-      "@/utils/*": ["./src/utils/*"],
-      "@/gmgn/*": ["./src/gmgn/*"],
-      "@/tracking/*": ["./src/tracking/*"],
-      "@/safety/*": ["./src/safety/*"],
-      "@/ai/*": ["./src/ai/*"],
-      "@/streaming/*": ["./src/streaming/*"]
+      "@/store/*": ["./src/store/*"]
     }
   },
   "include": [
@@ -26,8 +31,7 @@
     "entrypoints/**/*.tsx",
     "tests/**/*.ts",
     "tests/**/*.tsx",
-    "wxt.config.ts",
-    "vitest.config.ts",
+    "*.config.ts",
     ".wxt/wxt.d.ts"
   ],
   "exclude": [
