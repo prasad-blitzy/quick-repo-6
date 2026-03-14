@@ -205,8 +205,14 @@ importers:
 
   packages/utils:
     dependencies:
+      '@trading-intelligence/types':
+        specifier: workspace:*
+        version: link:../types
+      date-fns:
+        specifier: ^4.0.0
+        version: 4.1.0
       zod:
-        specifier: ^3.25.32
+        specifier: ^3.24.0
         version: 3.25.76
     devDependencies:
       typescript:
