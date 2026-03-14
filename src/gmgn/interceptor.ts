@@ -124,7 +124,7 @@ export function dispatchInterceptedData(
           timestamp: Date.now(),
         },
       },
-      '*',
+      window.location.origin,
     );
   } catch (err) {
     // Even the dispatch itself must never throw — protect the host page.

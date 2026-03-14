@@ -247,13 +247,13 @@ Data Sources                    Signal Engine                    Output
                             │  7-Factor Scoring        │
                             │  (parallel execution)    │
                             │                          │
-                            │  ┌─ Volume Spike (15%)   │
-                            │  ├─ Smart Money (25%)    │
-                            │  ├─ Buy/Sell Ratio (10%) │
+                            │  ┌─ Volume Spike (20%)   │
+                            │  ├─ Smart Money (20%)    │
+                            │  ├─ Buy/Sell Ratio (15%) │
                             │  ├─ Holder Growth (10%)  │
                             │  ├─ Liquidity (15%)      │
                             │  ├─ Token Age (10%)      │
-                            │  └─ Safety Score (15%)   │
+                            │  └─ Safety Score (10%)   │
                             └────────────┬────────────┘
                                          │
                             ┌────────────▼────────────┐
@@ -309,13 +309,13 @@ Each factor is an independent module producing a sub-score (0–100) that is mul
 
 | Factor | File | Default Weight | Scoring Logic |
 |--------|------|---------------|--------------|
-| Volume Spike | `src/signals/factors/volume-spike.ts` | 15% | Compares current 5-min volume against 5-min MA; 3–8× spike = high score; minimum $200/5m and $2,000/1h |
-| Smart Money Convergence | `src/signals/factors/smart-money-convergence.ts` | 25% | 3+ qualified wallets entering same token within 2h window; position size ≥80% of historical average = conviction |
-| Buy/Sell Ratio | `src/signals/factors/buy-sell-ratio.ts` | 10% | Buy/sell transaction ratio from GMGN data; ≥1.3× = accumulation; ≥2.0× with volume spike = amplified |
+| Volume Spike | `src/signals/factors/volume-spike.ts` | 20% | Compares current 5-min volume against 5-min MA; 3–8× spike = high score; minimum $200/5m and $2,000/1h |
+| Smart Money Convergence | `src/signals/factors/smart-money-convergence.ts` | 20% | 3+ qualified wallets entering same token within 2h window; position size ≥80% of historical average = conviction |
+| Buy/Sell Ratio | `src/signals/factors/buy-sell-ratio.ts` | 15% | Buy/sell transaction ratio from GMGN data; ≥1.3× = accumulation; ≥2.0× with volume spike = amplified |
 | Holder Growth | `src/signals/factors/holder-growth.ts` | 10% | Organic wallet growth (holders retaining ≥24h); penalizes bot-like patterns (identical amounts, rapid creation) |
 | Liquidity | `src/signals/factors/liquidity.ts` | 15% | Minimum $3K (pump.fun) to $30K (established); volume must be 10× intended position size; LP burn/lock status |
 | Token Age | `src/signals/factors/token-age.ts` | 10% | ≤3h = early accumulation (highest); ≤12h = gem scanning; >12h = diminished |
-| Safety Score | `src/signals/factors/safety-score.ts` | 15% | RugCheck score ≥300 + GoPlus clean bill; penalizes active authorities, high concentration (>20%), mutable metadata |
+| Safety Score | `src/signals/factors/safety-score.ts` | 10% | RugCheck score ≥300 + GoPlus clean bill; penalizes active authorities, high concentration (>20%), mutable metadata |
 
 **Scoring Thresholds:**
 

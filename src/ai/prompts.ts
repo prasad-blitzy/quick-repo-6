@@ -27,6 +27,55 @@
 import type { LLMTier, PromptTemplate } from './types';
 
 // ---------------------------------------------------------------------------
+// Prompt Input Sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum allowed length for user-generated blockchain text fields (symbol, name)
+ * after sanitization. Prevents excessively long token names from bloating prompts
+ * or being used as prompt injection vectors.
+ */
+const MAX_PROMPT_FIELD_LENGTH = 64;
+
+/**
+ * Sanitizes user-generated blockchain content before interpolating into LLM prompts.
+ *
+ * Token names and symbols are user-generated on-chain data — a malicious token creator
+ * could craft a name containing prompt injection text (e.g., "IGNORE_ALL_INSTRUCTIONS").
+ * This function provides defense-in-depth by:
+ * 1. Stripping control characters (U+0000–U+001F, U+007F–U+009F) that could interfere
+ *    with prompt parsing or introduce invisible instructions.
+ * 2. Removing common prompt injection delimiters and escape sequences.
+ * 3. Truncating to a reasonable length to prevent prompt bloating.
+ *
+ * Existing mitigations (structured JSON output, score clamping 0-100 in response-parser.ts,
+ * confidence normalization) limit downstream impact, but sanitization at the input boundary
+ * is the first line of defense.
+ *
+ * @param value - Raw user-generated string from blockchain data
+ * @returns Sanitized string safe for prompt interpolation
+ */
+function sanitizeForPrompt(value: string): string {
+  if (!value || typeof value !== 'string') {
+    return '';
+  }
+
+  return value
+    // Strip ASCII control characters (U+0000–U+001F) and DEL (U+007F)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    // Strip C1 control characters (U+0080–U+009F)
+    .replace(/[\u0080-\u009F]/g, '')
+    // Remove backtick sequences that could break out of template contexts
+    .replace(/`/g, "'")
+    // Collapse multiple whitespace to single space
+    .replace(/\s+/g, ' ')
+    .trim()
+    // Truncate to maximum safe length
+    .slice(0, MAX_PROMPT_FIELD_LENGTH);
+}
+
+// ---------------------------------------------------------------------------
 // TokenDataForPrompt Interface
 // ---------------------------------------------------------------------------
 
@@ -280,7 +329,7 @@ const DIMENSION_DATA_EXTRACTORS: Record<
 - Volume-to-MarketCap Ratio: ${input.marketCap > 0 ? ((input.volume24h / input.marketCap) * 100).toFixed(1) : '0.0'}%`,
 
   'social velocity': (input: TokenDataForPrompt): string =>
-    `- Symbol: ${input.symbol}
+    `- Symbol: ${sanitizeForPrompt(input.symbol)}
 - Token Age: ${input.tokenAgeHours.toFixed(1)} hours
 - Holder Count: ${formatLargeNumber(input.holderCount)}
 - Market Cap: $${formatLargeNumber(input.marketCap)}
@@ -306,8 +355,8 @@ const DIMENSION_DATA_EXTRACTORS: Record<
 - Liquidity-to-MarketCap Ratio: ${input.marketCap > 0 ? ((input.liquidity / input.marketCap) * 100).toFixed(1) : '0.0'}%`,
 
   'narrative fit': (input: TokenDataForPrompt): string =>
-    `- Symbol: ${input.symbol}
-- Token Mint: ${input.mint}
+    `- Symbol: ${sanitizeForPrompt(input.symbol)}
+- Token Mint: ${sanitizeForPrompt(input.mint)}
 - Token Age: ${input.tokenAgeHours.toFixed(1)} hours
 - Market Cap: $${formatLargeNumber(input.marketCap)}
 - Holder Count: ${formatLargeNumber(input.holderCount)}
@@ -423,11 +472,15 @@ export function buildAnalysisPrompt(input: TokenDataForPrompt): string {
     (d, i) => `${i + 1}. ${d.name}: ${d.description}`
   ).join('\n');
 
+  // Sanitize user-generated blockchain fields to mitigate prompt injection
+  const safeSymbol = sanitizeForPrompt(input.symbol);
+  const safeMint = sanitizeForPrompt(input.mint);
+
   return `Analyze this Solana memecoin token for trading signal quality.
 
 TOKEN DATA:
-- Symbol: ${input.symbol}
-- Mint: ${input.mint}
+- Symbol: ${safeSymbol}
+- Mint: ${safeMint}
 - Price: $${formatPrice(input.price)}
 - Market Cap: $${formatLargeNumber(input.marketCap)}
 - 24h Volume: $${formatLargeNumber(input.volume24h)}
@@ -521,7 +574,7 @@ export function buildDimensionPrompt(
 DIMENSION: ${dimensionName}
 INSTRUCTION: ${dimensionDescription}
 
-TOKEN: ${input.symbol} (${input.mint})
+TOKEN: ${sanitizeForPrompt(input.symbol)} (${sanitizeForPrompt(input.mint)})
 
 RELEVANT DATA:
 ${relevantData}
@@ -550,8 +603,8 @@ Return ONLY the JSON object, no additional text.`;
  * @returns A formatted string containing all token data fields
  */
 function buildGenericDataSection(input: TokenDataForPrompt): string {
-  return `- Symbol: ${input.symbol}
-- Mint: ${input.mint}
+  return `- Symbol: ${sanitizeForPrompt(input.symbol)}
+- Mint: ${sanitizeForPrompt(input.mint)}
 - Price: $${formatPrice(input.price)}
 - Market Cap: $${formatLargeNumber(input.marketCap)}
 - 24h Volume: $${formatLargeNumber(input.volume24h)}

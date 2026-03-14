@@ -108,13 +108,20 @@ const bundledLaunchFilter: HardFilter = {
  * pull vector.
  *
  * No threshold needed: boolean check — active = FAIL, revoked = PASS.
+ *
+ * SECURITY: Fail-close — if mintAuthorityActive is undefined/null at runtime
+ * (e.g., from incomplete JSON deserialization), the filter FAILS (blocks the
+ * token). This is intentional: for security-critical checks, it is safer to
+ * reject a token with unknown authority status than to allow it through.
  */
 const mintAuthorityFilter: HardFilter = {
   name: 'mint-authority-active',
   description: 'Token has active mint authority (can create unlimited tokens)',
   check: (input: TokenAnalysisInput): boolean => {
-    // PASS if mint authority is revoked (not active)
-    return !input.mintAuthorityActive;
+    // Fail-close: if mintAuthorityActive is not explicitly false, FAIL.
+    // This handles undefined/null values from runtime JSON deserialization
+    // by blocking the token rather than silently passing.
+    return input.mintAuthorityActive === false;
   },
 };
 
@@ -127,13 +134,20 @@ const mintAuthorityFilter: HardFilter = {
  * with Token-2022 extensions.
  *
  * No threshold needed: boolean check — active = FAIL, revoked = PASS.
+ *
+ * SECURITY: Fail-close — if freezeAuthorityActive is undefined/null at runtime
+ * (e.g., from incomplete JSON deserialization), the filter FAILS (blocks the
+ * token). This is intentional: for security-critical checks, it is safer to
+ * reject a token with unknown authority status than to allow it through.
  */
 const freezeAuthorityFilter: HardFilter = {
   name: 'freeze-authority-active',
   description: 'Token has active freeze authority (can freeze token accounts)',
   check: (input: TokenAnalysisInput): boolean => {
-    // PASS if freeze authority is revoked (not active)
-    return !input.freezeAuthorityActive;
+    // Fail-close: if freezeAuthorityActive is not explicitly false, FAIL.
+    // This handles undefined/null values from runtime JSON deserialization
+    // by blocking the token rather than silently passing.
+    return input.freezeAuthorityActive === false;
   },
 };
 
@@ -152,7 +166,8 @@ const lpLockFilter: HardFilter = {
   name: 'no-lp-lock-burn',
   description: 'LP tokens are neither locked nor burned',
   check: (input: TokenAnalysisInput): boolean => {
-    // PASS if LP is either burned OR locked
+    // Fail-close: both lpBurned and lpLocked must be explicitly true to pass.
+    // If either is undefined/null from incomplete data, the check fails safely.
     return input.lpBurned === true || input.lpLocked === true;
   },
 };
@@ -171,6 +186,10 @@ const minLiquidityFilter: HardFilter = {
   name: 'min-liquidity',
   description: 'Token liquidity is below $3K minimum',
   check: (input: TokenAnalysisInput): boolean => {
+    // Fail-close: if liquidity is null/undefined/NaN, treat as 0 (below threshold).
+    if (input.liquidity == null || Number.isNaN(input.liquidity)) {
+      return false;
+    }
     // PASS if liquidity meets or exceeds the minimum threshold
     return input.liquidity >= HARD_FILTER_THRESHOLDS.MIN_LIQUIDITY_USD;
   },
@@ -190,6 +209,10 @@ const holderConcentrationFilter: HardFilter = {
   name: 'top-10-holder-concentration',
   description: 'Top 10 holders control >50% of supply',
   check: (input: TokenAnalysisInput): boolean => {
+    // Fail-close: if topHolderPercent is null/undefined/NaN, treat as 100% (above threshold).
+    if (input.topHolderPercent == null || Number.isNaN(input.topHolderPercent)) {
+      return false;
+    }
     // PASS if top 10 holders hold at or below the maximum threshold
     return input.topHolderPercent <= HARD_FILTER_THRESHOLDS.MAX_TOP_10_HOLDER_PERCENT;
   },

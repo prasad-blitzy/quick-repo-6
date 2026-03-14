@@ -77,7 +77,7 @@ Detects sudden surges in trading volume that often precede significant price mov
 
 | Property | Value |
 |----------|-------|
-| **Default Weight** | `0.15` (user-configurable) |
+| **Default Weight** | `0.20` (user-configurable) |
 | **Source File** | [`src/signals/factors/volume-spike.ts`](../src/signals/factors/volume-spike.ts) |
 | **Data Source** | Birdeye OHLCV API, GMGN intercepted data |
 
@@ -143,11 +143,11 @@ Not all wallets are equal. The convergence detector weights wallet contributions
 | Wallet Type | Quality Weight | Criteria |
 |-------------|---------------|----------|
 | Smart Money | 1.0 | 70%+ win rate across tracked history |
-| KOL (Key Opinion Leader) | 0.8 | Known influential trader/analyst |
-| Whale | 0.7 | Large position holder |
+| Insider | 0.9 | Connected to project team — very reliable but rare signals |
+| Whale | 0.8 | Large position holder — significant market impact and conviction |
+| KOL (Key Opinion Leader) | 0.7 | Known influential trader/analyst |
 | Sniper | 0.5 | First-block buyer (often automated) |
-| Insider | 0.3 | Suspected insider (high caution) |
-| Developer | 0.2 | Token deployer wallet (lowest trust) |
+| Developer | 0.3 | Token deployer wallet (lowest trust) |
 
 > **References:** [`src/tracking/convergence-detector.ts`](../src/tracking/convergence-detector.ts), [`src/tracking/wallet-classifier.ts`](../src/tracking/wallet-classifier.ts)
 
@@ -159,7 +159,7 @@ Evaluates the directional pressure of trading activity — a high buy/sell ratio
 
 | Property | Value |
 |----------|-------|
-| **Default Weight** | `0.10` (user-configurable) |
+| **Default Weight** | `0.15` (user-configurable) |
 | **Source File** | [`src/signals/factors/buy-sell-ratio.ts`](../src/signals/factors/buy-sell-ratio.ts) |
 | **Data Source** | GMGN intercepted transaction data |
 
@@ -311,7 +311,7 @@ Integrates multi-source security analysis from RugCheck, GoPlus Security, and Ju
 
 | Property | Value |
 |----------|-------|
-| **Default Weight** | `0.20` (user-configurable) |
+| **Default Weight** | `0.10` (user-configurable) |
 | **Source File** | [`src/signals/factors/safety-score.ts`](../src/signals/factors/safety-score.ts) |
 | **Data Source** | RugCheck API, GoPlus Security API, Jupiter swap simulation |
 
@@ -372,13 +372,13 @@ The following table shows the **default weights** for each scoring factor. All w
 
 | # | Factor | Default Weight | Description |
 |---|--------|---------------|-------------|
-| 1 | Volume Spike Detection | **0.15** | Trading volume surge analysis |
+| 1 | Volume Spike Detection | **0.20** | Trading volume surge analysis |
 | 2 | Smart Money Convergence | **0.20** | Multi-wallet convergence detection |
-| 3 | Buy/Sell Ratio Analysis | **0.10** | Directional pressure assessment |
+| 3 | Buy/Sell Ratio Analysis | **0.15** | Directional pressure assessment |
 | 4 | Holder Growth Tracking | **0.10** | Organic adoption trajectory |
 | 5 | Liquidity Validation | **0.15** | Liquidity depth and LP security |
 | 6 | Token Age Filters | **0.10** | Creation time relevance scoring |
-| 7 | Safety Score | **0.20** | Multi-source security analysis |
+| 7 | Safety Score | **0.10** | Multi-source security analysis |
 | | **Total** | **1.00** | |
 
 > **Constraint:** Weights must always sum to **1.0**. The Settings panel UI enforces this constraint when users adjust individual weights.
