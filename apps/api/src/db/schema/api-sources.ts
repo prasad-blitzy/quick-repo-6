@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, boolean, integer, timestamp } from "drizzle-orm/pg-core";
+import { marketEnum } from "./enums.js";
 
 /**
  * API Sources Table Schema
@@ -6,16 +7,18 @@ import { pgTable, uuid, text, boolean, integer, timestamp } from "drizzle-orm/pg
  * Standalone configuration/registry table for managing external data source
  * configurations used by the news fetcher service. Each source (Finnhub,
  * CoinGecko, CryptoCompare, Binance, Alpha Vantage, NSE India, RSS feeds,
- * Reddit) is registered here with its rate limit, enable/disable toggle,
+ * Reddit) is registered here with its rate limit, active/inactive toggle,
  * and error tracking for graceful degradation.
  *
  * Key design decisions:
  * - UNIQUE constraint on `name` enables idempotent seeding via onConflictDoNothing()
  * - `error_count` supports per-source graceful degradation (AAP Rule 0.7.4):
  *   incremented on each failure, reset to 0 on success
- * - `is_enabled` toggle allows disabling a source without removing its config
+ * - `is_active` toggle allows disabling a source without removing its config
+ * - `market` column links each source to a specific market category
  * - `type` uses plain text (not a PostgreSQL enum) for extensibility without migrations
  * - No foreign key relations — this is a standalone lookup/config table
+ * - Column names and types align with the `NewsSource` interface in `packages/types/src/news.ts`
  */
 export const apiSources = pgTable("api_sources", {
   /** Unique source identifier (UUID v4, auto-generated) */
@@ -27,11 +30,14 @@ export const apiSources = pgTable("api_sources", {
   /** Source type classification: "api", "rss", or "scraper" */
   type: text("type").notNull(),
 
+  /** Market category this source covers — matches the `market` PostgreSQL enum */
+  market: marketEnum("market").notNull(),
+
   /** Base URL for the data source (e.g., "https://finnhub.io/api/v1") */
   baseUrl: text("base_url").notNull(),
 
-  /** Whether this source is actively polled. Defaults to true. */
-  isEnabled: boolean("is_enabled").notNull().default(true),
+  /** Whether this source is currently active/enabled for polling. Defaults to true. */
+  isActive: boolean("is_active").notNull().default(true),
 
   /** Rate limit in requests per minute (or per period). Nullable for unlimited sources. */
   rateLimit: integer("rate_limit"),
@@ -50,6 +56,9 @@ export const apiSources = pgTable("api_sources", {
 
   /** Record creation timestamp. Automatically set on insert. */
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+
+  /** Record update timestamp. Automatically set on insert and update. */
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 /** TypeScript type for SELECT results from the api_sources table */

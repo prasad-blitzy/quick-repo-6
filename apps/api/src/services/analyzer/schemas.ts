@@ -187,13 +187,14 @@ export const TradeDetectionResultSchema = z.object({
     .describe("Stock/crypto ticker symbol (e.g., 'AAPL', 'BTC')"),
 
   /**
-   * Recommended trade direction — LONG (bullish) or SHORT (bearish).
+   * Recommended trade direction — long (bullish) or short (bearish).
    * Only present when `tradeDetected` is `true`.
+   * Values match the PostgreSQL `direction` enum in enums.ts.
    */
   direction: z
-    .enum(["LONG", "SHORT"])
+    .enum(["long", "short"])
     .optional()
-    .describe("Recommended trade direction"),
+    .describe("Recommended trade direction: 'long' or 'short'"),
 
   /**
    * Explanation of the trade detection analysis, including identified
@@ -207,15 +208,16 @@ export const TradeDetectionResultSchema = z.object({
   /**
    * Recommended trading timeframe for the detected opportunity.
    * Only present when `tradeDetected` is `true`.
+   * Values match the PostgreSQL `timeframe` enum in enums.ts.
    *
-   * - INTRADAY: Same-day execution expected
-   * - SWING: 2–10 day holding period
-   * - POSITIONAL: 10+ day holding period
+   * - intraday: Same-day execution expected
+   * - swing: 2–10 day holding period
+   * - position: 10+ day holding period
    */
   timeframe: z
-    .enum(["INTRADAY", "SWING", "POSITIONAL"])
+    .enum(["intraday", "swing", "position"])
     .optional()
-    .describe("Recommended trading timeframe"),
+    .describe("Recommended trading timeframe: 'intraday', 'swing', or 'position'"),
 
   /**
    * Strength of the detected trade signal from 0.0 (weakest) to 1.0 (strongest).
@@ -239,9 +241,9 @@ export const TradeDetectionResultSchema = z.object({
  * const detected: TradeDetectionResult = {
  *   tradeDetected: true,
  *   symbol: "AAPL",
- *   direction: "LONG",
+ *   direction: "long",
  *   reasoning: "Strong earnings beat with raised guidance suggests upside...",
- *   timeframe: "SWING",
+ *   timeframe: "swing",
  *   signalStrength: 0.82,
  * };
  *
@@ -290,20 +292,21 @@ export const TradeRecommendationSchema = z.object({
 
   /**
    * Market category for the recommended trade.
-   * - US: US equities (NYSE, NASDAQ)
-   * - INDIA: Indian equities (NSE, BSE)
-   * - CRYPTO: Cryptocurrency markets
+   * Values match the PostgreSQL `market` enum in enums.ts.
+   * - us_stock: US equities (NYSE, NASDAQ)
+   * - indian_equity: Indian equities (NSE, BSE)
+   * - crypto: Cryptocurrency markets
    *
-   * Note: "SOCIAL" is excluded as it is a news source, not a tradable market.
+   * Note: "social" is excluded as it is a news source, not a tradable market.
    */
   market: z
-    .enum(["US", "INDIA", "CRYPTO"])
-    .describe("Market category"),
+    .enum(["us_stock", "indian_equity", "crypto"])
+    .describe("Market category: 'us_stock', 'indian_equity', or 'crypto'"),
 
-  /** Trade direction — LONG (buy/bullish) or SHORT (sell/bearish). */
+  /** Trade direction — long (buy/bullish) or short (sell/bearish). Values match PG enum. */
   direction: z
-    .enum(["LONG", "SHORT"])
-    .describe("Trade direction"),
+    .enum(["long", "short"])
+    .describe("Trade direction: 'long' or 'short'"),
 
   /**
    * Confidence score from 0.00 to 1.00.
@@ -319,47 +322,56 @@ export const TradeRecommendationSchema = z.object({
    * Recommended entry price as a decimal string (e.g., "875.0000").
    * CRITICAL: `z.string()` — NOT `z.number()` — to preserve PostgreSQL
    * numeric(12,4) precision and avoid floating-point loss.
+   * Regex validation ensures the LLM returns a valid numeric string.
    */
   entryPrice: z
     .string()
+    .regex(/^\d+(\.\d{1,4})?$/, "Entry price must be a numeric string with up to 4 decimal places")
     .describe("Recommended entry price as decimal string (e.g., '875.00')"),
 
   /**
    * Stop loss price as a decimal string (e.g., "845.0000").
    * CRITICAL: `z.string()` — NOT `z.number()` — to preserve PostgreSQL
    * numeric(12,4) precision and avoid floating-point loss.
+   * Regex validation ensures the LLM returns a valid numeric string.
    */
   stopLoss: z
     .string()
+    .regex(/^\d+(\.\d{1,4})?$/, "Stop loss must be a numeric string with up to 4 decimal places")
     .describe("Stop loss price as decimal string (e.g., '845.00')"),
 
   /**
    * Take profit price as a decimal string (e.g., "950.0000").
    * CRITICAL: `z.string()` — NOT `z.number()` — to preserve PostgreSQL
    * numeric(12,4) precision and avoid floating-point loss.
+   * Regex validation ensures the LLM returns a valid numeric string.
    */
   takeProfit: z
     .string()
+    .regex(/^\d+(\.\d{1,4})?$/, "Take profit must be a numeric string with up to 4 decimal places")
     .describe("Take profit price as decimal string (e.g., '950.00')"),
 
   /**
    * Trading timeframe for the recommendation.
+   * Values match the PostgreSQL `timeframe` enum in enums.ts.
    *
-   * - INTRADAY: Same-day execution, exit before market close
-   * - SWING: 2–10 day holding period
-   * - POSITIONAL: 10+ day holding period
+   * - intraday: Same-day execution, exit before market close
+   * - swing: 2–10 day holding period
+   * - position: 10+ day holding period
    */
   timeframe: z
-    .enum(["INTRADAY", "SWING", "POSITIONAL"])
-    .describe("Trading timeframe"),
+    .enum(["intraday", "swing", "position"])
+    .describe("Trading timeframe: 'intraday', 'swing', or 'position'"),
 
   /**
    * Calculated risk-reward ratio as a string (e.g., "2.50").
    * CRITICAL: `z.string()` — NOT `z.number()` — to preserve precision.
    * Ratio = (takeProfit - entryPrice) / (entryPrice - stopLoss) for LONG trades.
+   * Regex validation ensures the LLM returns a valid numeric string.
    */
   riskRewardRatio: z
     .string()
+    .regex(/^\d+(\.\d{1,4})?$/, "Risk-reward ratio must be a numeric string with up to 4 decimal places")
     .describe("Calculated risk-reward ratio as string (e.g., '2.50')"),
 
   /**
@@ -391,13 +403,13 @@ export const TradeRecommendationSchema = z.object({
  * ```typescript
  * const recommendation: TradeRecommendation = {
  *   symbol: "AAPL",
- *   market: "US",
- *   direction: "LONG",
+ *   market: "us_stock",
+ *   direction: "long",
  *   confidence: 0.87,
  *   entryPrice: "875.00",
  *   stopLoss: "845.00",
  *   takeProfit: "950.00",
- *   timeframe: "SWING",
+ *   timeframe: "swing",
  *   riskRewardRatio: "2.50",
  *   reasoning: "Strong Q2 earnings beat with 12% revenue growth and raised guidance...",
  *   catalystExpiry: "2026-04-15T00:00:00Z",

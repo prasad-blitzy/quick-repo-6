@@ -495,19 +495,24 @@ Copy `.env.example` to `.env` and configure the following variables. See `.env.e
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather | Yes |
 | `FINNHUB_API_KEY` | Finnhub API key for US stock news and quotes | Yes |
 
-### Optional Variables
+### API Keys (Required / Optional)
+
+| Variable | Description | Required |
+|---|---|---|
+| `CRYPTOCOMPARE_API_KEY` | CryptoCompare API key (free tier, 100K calls/month) | Yes |
+| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key (free tier, 25 calls/day) | Yes |
+| `COINGECKO_API_KEY` | CoinGecko API key (free tier works without a key; set for higher rate limits) | No |
+
+### Other Optional Variables
 
 | Variable | Description | Default |
 |---|---|---|
-| `COINGECKO_API_KEY` | CoinGecko API key (free tier) | — |
-| `CRYPTOCOMPARE_API_KEY` | CryptoCompare API key (free tier) | — |
-| `ALPHA_VANTAGE_API_KEY` | Alpha Vantage API key (free tier) | — |
 | `NODE_ENV` | Application environment | `development` |
 | `PORT` | Express server port | `3000` |
 | `LOG_LEVEL` | Pino log level (`debug`, `info`, `warn`, `error`) | `info` |
-| `POLLING_INTERVAL_MS` | News polling interval in milliseconds | `300000` (5 min) |
-| `USE_SUPABASE` | Toggle Supabase connection mode (`true`/`false`) | `false` |
-| `SUPABASE_URL` | Supabase project URL (when `USE_SUPABASE=true`) | — |
+| `NEWS_POLL_INTERVAL` | News polling cron expression | `*/5 * * * *` (every 5 min) |
+| `DATABASE_PROVIDER` | Toggle database connection mode (`local` / `supabase`) | `local` |
+| `SUPABASE_URL` | Supabase project URL (when `DATABASE_PROVIDER=supabase`) | — |
 
 ---
 

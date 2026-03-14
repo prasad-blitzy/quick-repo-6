@@ -123,7 +123,7 @@ Define all 7 database tables with Drizzle ORM, run migrations against PostgreSQL
 | `apps/api/drizzle.config.ts` | Schema path (`./src/db/schema`), migration output dir (`./src/db/migrations`), DB URL from environment |
 | `apps/api/src/config/env.ts` | Zod-validated environment variable loader with typed config export |
 | `apps/api/src/config/constants.ts` | Queue names, API endpoint URLs, default configurations, polling intervals |
-| `apps/api/src/db/schema/enums.ts` | PostgreSQL enums: `market` (us_stock, indian_equity, crypto, social), `direction` (long, short), `status` (active, closed, expired), `timeframe` (intraday, swing, positional), `pipeline_step` (filter, sentiment, trade_detect, recommend) |
+| `apps/api/src/db/schema/enums.ts` | PostgreSQL enums: `market` (us_stock, indian_equity, crypto, social), `direction` (long, short), `status` (active, closed, expired, cancelled), `timeframe` (intraday, swing, position), `pipeline_step` (filter, sentiment, trade_detect, recommend) |
 | `apps/api/src/db/schema/news-articles.ts` | `news_articles` table: UUID primary key, `text[]` for symbols, JSONB for raw API response, UNIQUE index on `url` column for deduplication |
 | `apps/api/src/db/schema/trade-opportunities.ts` | `trade_opportunities` table: `numeric(12,4)` for entry_price, stop_loss, take_profit; FK to news_articles |
 | `apps/api/src/db/schema/trade-performance.ts` | `trade_performance` table: P&L tracking with `numeric(12,4)` for actual prices and profit/loss |
@@ -435,7 +435,7 @@ const result = await pipeline.invoke({ article: sampleArticle });
 //    - stop_loss: numeric value
 //    - take_profit: numeric value
 //    - confidence: 0.00 to 1.00
-//    - timeframe: "intraday" | "swing" | "positional"
+//    - timeframe: "intraday" | "swing" | "position"
 // 5. All price targets validate against Zod schema
 // 6. Conditional short-circuit test: submit irrelevant article → stops at filter
 

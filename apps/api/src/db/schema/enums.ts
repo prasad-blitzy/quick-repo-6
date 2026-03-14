@@ -62,17 +62,19 @@ export const directionEnum = pgEnum("direction", [
 /**
  * Lifecycle status of a trade opportunity.
  *
- * PostgreSQL type: CREATE TYPE "status" AS ENUM('active','closed','expired')
+ * PostgreSQL type: CREATE TYPE "status" AS ENUM('active','closed','expired','cancelled')
  *
  * Values:
- *  - active  — Currently valid trade recommendation awaiting resolution
- *  - closed  — Trade has been closed (hit target, hit stop, or manually closed)
- *  - expired — Trade opportunity expired without being acted upon (time-based)
+ *  - active    — Currently valid trade recommendation awaiting resolution
+ *  - closed    — Trade has been closed (hit target, hit stop, or manually closed)
+ *  - expired   — Trade opportunity expired without being acted upon (time-based)
+ *  - cancelled — Manually cancelled or invalidated by the system or operator
  */
 export const statusEnum = pgEnum("status", [
   "active",
   "closed",
   "expired",
+  "cancelled",
 ]);
 
 // ---------------------------------------------------------------------------

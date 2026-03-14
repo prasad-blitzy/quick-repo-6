@@ -117,12 +117,12 @@ export const positiveNumberSchema = z.coerce.number().positive();
  * Values match the `Market` enum in `packages/types/src/news.ts` and
  * the PostgreSQL enum in `apps/api/src/db/schema/enums.ts`.
  *
- * - US — United States stock market (Finnhub, Alpha Vantage, CNBC/MarketWatch RSS)
- * - INDIA — Indian equities NSE/BSE (Economic Times, Financial Express, Business Standard RSS)
- * - CRYPTO — Cryptocurrency markets (CoinGecko, CryptoCompare, Binance)
- * - SOCIAL — Social sentiment sources (Reddit RSS: r/wallstreetbets, r/IndianStreetBets)
+ * - us_stock      — United States stock market (Finnhub, Alpha Vantage, CNBC/MarketWatch RSS)
+ * - indian_equity — Indian equities NSE/BSE (Economic Times, Financial Express, Business Standard RSS)
+ * - crypto        — Cryptocurrency markets (CoinGecko, CryptoCompare, Binance)
+ * - social        — Social sentiment sources (Reddit RSS: r/wallstreetbets, r/IndianStreetBets)
  */
-export const marketSchema = z.enum(['US', 'INDIA', 'CRYPTO', 'SOCIAL']);
+export const marketSchema = z.enum(['us_stock', 'indian_equity', 'crypto', 'social']);
 
 /** Inferred TypeScript type for market parameter */
 export type MarketParam = z.infer<typeof marketSchema>;
@@ -133,33 +133,33 @@ export type MarketParam = z.infer<typeof marketSchema>;
 
 /**
  * Validates trade direction strings.
- * Values match the `Direction` enum in `packages/types/src/trade.ts`.
+ * Values match the PostgreSQL `direction` enum in `apps/api/src/db/schema/enums.ts`.
  *
- * - LONG — Buy recommendation (🟢 in Telegram alerts)
- * - SHORT — Sell recommendation (🔴 in Telegram alerts)
+ * - long  — Buy recommendation (🟢 in Telegram alerts)
+ * - short — Sell recommendation (🔴 in Telegram alerts)
  */
-export const directionSchema = z.enum(['LONG', 'SHORT']);
+export const directionSchema = z.enum(['long', 'short']);
 
 /**
  * Validates trade timeframe strings.
- * Values match the `Timeframe` enum in `packages/types/src/trade.ts`.
+ * Values match the PostgreSQL `timeframe` enum in `apps/api/src/db/schema/enums.ts`.
  *
- * - INTRADAY — Same-day trades
- * - SWING — Multi-day to multi-week positions
- * - POSITIONAL — Multi-week to multi-month positions
+ * - intraday — Same-day trades
+ * - swing    — Multi-day to multi-week positions
+ * - position — Multi-week to multi-month positions
  */
-export const timeframeSchema = z.enum(['INTRADAY', 'SWING', 'POSITIONAL']);
+export const timeframeSchema = z.enum(['intraday', 'swing', 'position']);
 
 /**
  * Validates trade opportunity status strings.
- * Values match the `OpportunityStatus` enum in `packages/types/src/trade.ts`.
+ * Values match the PostgreSQL `status` enum in `apps/api/src/db/schema/enums.ts`.
  *
- * - ACTIVE — Currently actionable opportunity
- * - CLOSED — Position closed (hit target or stop loss)
- * - EXPIRED — Opportunity window has passed
- * - CANCELLED — Manually cancelled or invalidated
+ * - active    — Currently actionable opportunity
+ * - closed    — Position closed (hit target or stop loss)
+ * - expired   — Opportunity window has passed
+ * - cancelled — Manually cancelled or invalidated
  */
-export const opportunityStatusSchema = z.enum(['ACTIVE', 'CLOSED', 'EXPIRED', 'CANCELLED']);
+export const opportunityStatusSchema = z.enum(['active', 'closed', 'expired', 'cancelled']);
 
 // ============================================================================
 // Financial String Validators (AAP Rule 0.7.2 — Decimal Precision)

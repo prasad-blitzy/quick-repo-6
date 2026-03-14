@@ -9,7 +9,7 @@
  * Design constraints (AAP Rules):
  * - No runtime code beyond the Market enum (interfaces are erased at compile time)
  * - No `any` type — `unknown` is used for flexible JSON fields (Rule 0.7.1)
- * - String enums with uppercase values matching PostgreSQL enum definitions
+ * - String enums with lowercase values matching PostgreSQL enum definitions exactly
  * - All date fields use ISO 8601 `string` type for JSON serialization, not `Date`
  * - No optional properties (`?:`) — nullable fields use `| null` union
  * - Compiles under TypeScript strict mode with `exactOptionalPropertyTypes`
@@ -25,18 +25,18 @@
  * String values MUST match the PostgreSQL enum values defined in
  * `apps/api/src/db/schema/enums.ts` to maintain database ↔ application parity.
  *
- * | Value    | Coverage                                                      |
- * |----------|---------------------------------------------------------------|
- * | `US`     | US stocks — Finnhub, CNBC/MarketWatch RSS                     |
- * | `INDIA`  | Indian equities — Economic Times, Financial Express, BSE RSS  |
- * | `CRYPTO` | Cryptocurrency — CoinGecko, CryptoCompare, Binance            |
- * | `SOCIAL` | Social media sentiment — Reddit RSS/API                       |
+ * | Value            | Coverage                                                      |
+ * |------------------|---------------------------------------------------------------|
+ * | `us_stock`       | US stocks — Finnhub, CNBC/MarketWatch RSS                     |
+ * | `indian_equity`  | Indian equities — Economic Times, Financial Express, BSE RSS  |
+ * | `crypto`         | Cryptocurrency — CoinGecko, CryptoCompare, Binance            |
+ * | `social`         | Social media sentiment — Reddit RSS/API                       |
  */
 export enum Market {
-  US = 'US',
-  INDIA = 'INDIA',
-  CRYPTO = 'CRYPTO',
-  SOCIAL = 'SOCIAL',
+  US_STOCK = 'us_stock',
+  INDIAN_EQUITY = 'indian_equity',
+  CRYPTO = 'crypto',
+  SOCIAL = 'social',
 }
 
 // ---------------------------------------------------------------------------

@@ -42,6 +42,7 @@
   --color-success: #22c55e;
   --color-success-bg: rgba(34, 197, 94, 0.1);
   --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
   --color-danger-bg: rgba(239, 68, 68, 0.1);
   --color-warning: #f59e0b;
   --color-warning-bg: rgba(245, 158, 11, 0.1);
@@ -772,7 +773,18 @@ hr {
 }
 
 .btn-danger:hover {
-  background-color: #dc2626;
+  background-color: var(--color-danger-hover);
+}
+
+/* Focus-visible styles for keyboard navigation (WCAG 2.4.7) */
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .btn-sm {

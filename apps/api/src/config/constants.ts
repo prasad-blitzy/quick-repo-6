@@ -211,14 +211,14 @@ export const PIPELINE = {
 // Market, Direction, and Timeframe Enum Value Arrays
 // ---------------------------------------------------------------------------
 
-/** Supported financial market types */
-export const MARKETS = ["us_stocks", "indian_equities", "crypto"] as const;
+/** Supported financial market types — values match PG enum in enums.ts */
+export const MARKETS = ["us_stock", "indian_equity", "crypto", "social"] as const;
 
 /** Trade direction values */
 export const DIRECTIONS = ["long", "short"] as const;
 
-/** Supported trading timeframe categories */
-export const TIMEFRAMES = ["intraday", "swing", "positional"] as const;
+/** Supported trading timeframe categories — values match PG enum in enums.ts */
+export const TIMEFRAMES = ["intraday", "swing", "position"] as const;
 
 // ---------------------------------------------------------------------------
 // Derived Type Exports
