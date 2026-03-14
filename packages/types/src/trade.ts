@@ -4,23 +4,28 @@
  * Types for the Trading Intelligence Application's trade analysis and
  * recommendation system. These types map directly to the `trade_opportunities`
  * and `trade_performance` database tables and are consumed by:
- *   - `apps/api/src/services/analyzer/` (LangGraph pipeline output)
- *   - `apps/api/src/services/notifier/` (Telegram alert formatting)
- *   - `apps/api/src/routes/opportunities.routes.ts` (REST API responses)
- *   - `apps/web/src/pages/TradeOpportunities.tsx` (dashboard display)
+ *   - `apps/api/src/services/analyzer/` — LangGraph pipeline output
+ *   - `apps/api/src/services/notifier/`  — Telegram alert formatting
+ *   - `apps/api/src/routes/opportunities.routes.ts` — REST API responses
+ *   - `apps/api/src/routes/performance.routes.ts`   — Performance tracking API
+ *   - `apps/web/src/pages/TradeOpportunities.tsx`    — Dashboard display
+ *   - `apps/web/src/pages/Performance.tsx`           — Performance charts
  *
  * Design constraints (AAP Rules):
- * - No `any` type — `unknown` used for flexible fields (Rule 0.7.1)
- * - String enums with lowercase values matching PostgreSQL enum definitions
- *   in `apps/api/src/db/schema/enums.ts` (Rule 0.7.2)
+ * - No `any` type — specific types for every field (Rule 0.7.1)
+ * - String enums with UPPERCASE values matching PostgreSQL enum definitions
+ *   in `apps/api/src/db/schema/enums.ts`
  * - All price fields are `string` — representing PostgreSQL `numeric(12,4)`,
- *   never JavaScript floating-point `number` (Rule 0.7.2)
+ *   NEVER JavaScript floating-point `number` (Rule 0.7.2)
  * - Confidence uses `number` (range 0.00–1.00) — `numeric(3,2)` in database
- * - All date fields use ISO 8601 `string` for JSON serialization
+ * - All date fields use ISO 8601 `string` for JSON serialization, not `Date`
+ * - ESM imports use `.js` extension (Rule 0.7.1)
  * - Compiles under TypeScript strict mode with `exactOptionalPropertyTypes`
+ *
+ * @module @trading-intelligence/types/trade
  */
 
-import type { Market } from './news.js';
+import { Market } from './news.js';
 
 // ---------------------------------------------------------------------------
 // Direction Enum
@@ -37,8 +42,10 @@ import type { Market } from './news.js';
  * - `SHORT` → 🔴 (sell recommendation)
  */
 export enum Direction {
-  LONG = 'long',
-  SHORT = 'short',
+  /** Buy recommendation — enter a long position. */
+  LONG = 'LONG',
+  /** Sell recommendation — enter a short position. */
+  SHORT = 'SHORT',
 }
 
 // ---------------------------------------------------------------------------
@@ -51,16 +58,19 @@ export enum Direction {
  * String values MUST match the PostgreSQL `timeframe` enum values defined in
  * `apps/api/src/db/schema/enums.ts`.
  *
- * | Value      | Holding Period             |
- * |------------|----------------------------|
- * | `intraday` | Same-day trades            |
- * | `swing`    | Multi-day to multi-week    |
- * | `position` | Multi-week to multi-month  |
+ * | Value         | Holding Period              |
+ * |---------------|-----------------------------|
+ * | `INTRADAY`    | Same-day trades             |
+ * | `SWING`       | Multi-day to multi-week     |
+ * | `POSITIONAL`  | Multi-week to multi-month   |
  */
 export enum Timeframe {
-  INTRADAY = 'intraday',
-  SWING = 'swing',
-  POSITION = 'position',
+  /** Same-day trades — positions opened and closed within a single trading session. */
+  INTRADAY = 'INTRADAY',
+  /** Multi-day to multi-week trades — capitalizing on short-to-medium term trends. */
+  SWING = 'SWING',
+  /** Multi-week to multi-month trades — based on longer-term fundamental catalysts. */
+  POSITIONAL = 'POSITIONAL',
 }
 
 // ---------------------------------------------------------------------------
@@ -75,16 +85,20 @@ export enum Timeframe {
  *
  * | Value       | Meaning                                      |
  * |-------------|----------------------------------------------|
- * | `active`    | Currently actionable opportunity              |
- * | `closed`    | Position closed (hit target or stop loss)     |
- * | `expired`   | Opportunity window has passed                 |
- * | `cancelled` | Manually cancelled or invalidated             |
+ * | `ACTIVE`    | Currently actionable opportunity              |
+ * | `CLOSED`    | Position closed (hit target or stop loss)     |
+ * | `EXPIRED`   | Opportunity window has passed                 |
+ * | `CANCELLED` | Manually cancelled or invalidated             |
  */
 export enum OpportunityStatus {
-  ACTIVE = 'active',
-  CLOSED = 'closed',
-  EXPIRED = 'expired',
-  CANCELLED = 'cancelled',
+  /** Currently actionable — the opportunity is live and tradeable. */
+  ACTIVE = 'ACTIVE',
+  /** Position closed — either the target was hit or the stop loss was triggered. */
+  CLOSED = 'CLOSED',
+  /** Opportunity expired — the recommended timeframe has elapsed without entry. */
+  EXPIRED = 'EXPIRED',
+  /** Manually cancelled or invalidated by updated analysis. */
+  CANCELLED = 'CANCELLED',
 }
 
 // ---------------------------------------------------------------------------
@@ -100,17 +114,19 @@ export enum OpportunityStatus {
  * JavaScript `number` for financial values (AAP Rule 0.7.2).
  *
  * Key invariants:
- * - `articleId` references the originating `news_articles.id` row
+ * - `articleId` references the originating `news_articles.id` row.
  * - `entryPrice`, `stopLoss`, `takeProfit` are validated against actual market
- *   data from APIs to prevent LLM hallucinations (AAP Rule 0.7.2)
- * - `confidence` is in range 0.00–1.00, stored as `numeric(3,2)`
- * - `riskRewardRatio` is computed: (takeProfit - entryPrice) / (entryPrice - stopLoss)
+ *   data from APIs to prevent LLM hallucinations (AAP Rule 0.7.2). Any price
+ *   more than 10% away from the current market price is flagged.
+ * - `confidence` is in range 0.00–1.00, stored as `numeric(3,2)`.
+ * - `riskRewardRatio` is computed: (takeProfit − entryPrice) / (entryPrice − stopLoss)
+ *   for LONG trades, or the inverse for SHORT trades.
  */
 export interface TradeOpportunity {
   /** UUID v4 primary key. */
   id: string;
 
-  /** Foreign key referencing the originating news article. */
+  /** Foreign key referencing the originating news article (`news_articles.id`). */
   articleId: string;
 
   /**
@@ -126,37 +142,35 @@ export interface TradeOpportunity {
   direction: Direction;
 
   /**
+   * Pipeline confidence score in range 0.00–1.00.
+   * Stored as PostgreSQL `numeric(3,2)`. This is a score, NOT a financial
+   * price, so `number` is appropriate here.
+   */
+  confidence: number;
+
+  /**
    * Recommended entry price as a string (PostgreSQL `numeric(12,4)`).
    * Validated against actual market data to prevent LLM hallucinations.
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
    */
   entryPrice: string;
 
   /**
    * Stop loss price as a string (PostgreSQL `numeric(12,4)`).
    * The price at which the position should be closed to limit losses.
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
    */
   stopLoss: string;
 
   /**
    * Take profit price as a string (PostgreSQL `numeric(12,4)`).
    * The price at which the position should be closed to realize gains.
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
    */
   takeProfit: string;
 
-  /**
-   * Pipeline confidence score in range 0.00–1.00.
-   * Stored as PostgreSQL `numeric(3,2)`.
-   */
-  confidence: number;
-
-  /** Recommended trade timeframe. */
+  /** Recommended trade timeframe (INTRADAY, SWING, or POSITIONAL). */
   timeframe: Timeframe;
-
-  /**
-   * Computed risk/reward ratio: (takeProfit - entry) / (entry - stopLoss).
-   * Stored as a string (PostgreSQL `numeric(8,2)`).
-   */
-  riskRewardRatio: string;
 
   /**
    * LLM-generated reasoning for this trade recommendation.
@@ -164,6 +178,13 @@ export interface TradeOpportunity {
    * DK-CoT (Domain Knowledge Chain-of-Thought) prompting.
    */
   reasoning: string;
+
+  /**
+   * Computed risk/reward ratio: (takeProfit − entry) / (entry − stopLoss).
+   * Stored as a string to preserve decimal precision.
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
+   */
+  riskRewardRatio: string;
 
   /** Current lifecycle status of this opportunity. */
   status: OpportunityStatus;
@@ -183,14 +204,16 @@ export interface TradeOpportunity {
  * Tracks the actual performance outcome of a trade opportunity.
  *
  * Maps directly to the `trade_performance` database table. Created when
- * an opportunity's status transitions to `closed`, recording the actual
- * exit price and computed profit/loss.
+ * an opportunity's status transitions to `CLOSED`, recording the actual
+ * entry/exit prices and computed profit/loss.
  *
  * Key invariants:
- * - `opportunityId` is a one-to-one relationship with `trade_opportunities.id`
- * - All monetary values are `string` (PostgreSQL `numeric(12,4)`)
- * - `pnlPercentage` is `string` (PostgreSQL `numeric(8,4)`)
- * - `isWin` is computed: true if P&L > 0, false otherwise
+ * - `opportunityId` is a one-to-one relationship with `trade_opportunities.id`.
+ * - All monetary and percentage values are `string` (PostgreSQL `numeric(12,4)`)
+ *   to preserve financial decimal precision (AAP Rule 0.7.2).
+ * - `isWin` is computed: `true` if P&L > 0, `false` otherwise.
+ * - `exitReason` describes why the position was closed (e.g., stop hit, target
+ *   reached, manual exit, time expiry).
  */
 export interface TradePerformance {
   /** UUID v4 primary key. */
@@ -200,28 +223,49 @@ export interface TradePerformance {
   opportunityId: string;
 
   /**
+   * Actual entry price as a string (PostgreSQL `numeric(12,4)`).
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
+   */
+  actualEntryPrice: string;
+
+  /**
    * Actual exit / close price as a string (PostgreSQL `numeric(12,4)`).
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
    */
   actualExitPrice: string;
 
   /**
-   * Absolute profit or loss amount as a string (PostgreSQL `numeric(12,4)`).
+   * Percentage profit or loss as a string (PostgreSQL `numeric(12,4)`).
    * Negative values indicate a loss.
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
    */
-  pnlAmount: string;
+  pnlPercent: string;
 
   /**
-   * Percentage profit or loss as a string (PostgreSQL `numeric(8,4)`).
+   * Absolute profit or loss amount as a string (PostgreSQL `numeric(12,4)`).
    * Negative values indicate a loss.
+   * CRITICAL: `string` type, NOT `number` — per AAP Rule 0.7.2.
    */
-  pnlPercentage: string;
+  pnlAmount: string;
 
   /** Whether the trade was profitable (`pnlAmount > 0`). */
   isWin: boolean;
 
-  /** ISO 8601 timestamp of when the position was closed. */
-  closedAt: string;
+  /**
+   * Reason why the position was closed.
+   * Examples: `'stop_hit'`, `'target_reached'`, `'manual'`, `'expired'`.
+   */
+  exitReason: string;
+
+  /** ISO 8601 timestamp of when the position was actually entered. */
+  enteredAt: string;
+
+  /** ISO 8601 timestamp of when the position was actually exited. */
+  exitedAt: string;
 
   /** ISO 8601 timestamp of when the performance record was created. */
   createdAt: string;
+
+  /** ISO 8601 timestamp of the last update to the performance record. */
+  updatedAt: string;
 }
