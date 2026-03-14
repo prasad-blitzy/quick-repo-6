@@ -2,21 +2,30 @@
   "name": "@trading-intelligence/config",
   "version": "0.1.0",
   "private": true,
+  "description": "Shared ESLint and TypeScript configuration for Trading Intelligence monorepo",
   "type": "module",
   "main": "./eslint.js",
   "exports": {
     "./eslint": "./eslint.js",
-    "./typescript": "./tsconfig.json"
+    "./tsconfig": "./tsconfig.json"
   },
+  "files": [
+    "eslint.js",
+    "tsconfig.json"
+  ],
   "scripts": {
-    "build": "echo 'No build step for config package'",
-    "lint": "echo 'No lint step for config package'",
-    "clean": "echo 'No clean step for config package'"
+    "lint": "eslint .",
+    "clean": "rm -rf dist"
   },
   "devDependencies": {
-    "typescript": "~5.9.0",
-    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0"
+    "eslint": "^9.0.0",
+    "typescript": "~5.9.0"
+  },
+  "peerDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0"
   }
 }
