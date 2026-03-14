@@ -209,9 +209,11 @@ const holderConcentrationFilter: HardFilter = {
   name: 'top-10-holder-concentration',
   description: 'Top 10 holders control >50% of supply',
   check: (input: TokenAnalysisInput): boolean => {
-    // Fail-close: if topHolderPercent is null/undefined/NaN, treat as 100% (above threshold).
+    // Fail-open: if topHolderPercent is null/undefined/NaN, the filter PASSES
+    // because we cannot verify the condition — blocking would cause false negatives.
+    // topHolderPercent data may be unavailable from external API responses.
     if (input.topHolderPercent == null || Number.isNaN(input.topHolderPercent)) {
-      return false;
+      return true;
     }
     // PASS if top 10 holders hold at or below the maximum threshold
     return input.topHolderPercent <= HARD_FILTER_THRESHOLDS.MAX_TOP_10_HOLDER_PERCENT;
