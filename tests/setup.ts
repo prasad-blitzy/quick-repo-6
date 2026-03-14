@@ -1,3 +1,4 @@
+/// <reference types="vitest/globals" />
 /**
  * Global test setup for GMGN Signal Bot Chrome Extension
  *
