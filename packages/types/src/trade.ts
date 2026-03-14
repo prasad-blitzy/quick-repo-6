@@ -13,7 +13,7 @@
  *
  * Design constraints (AAP Rules):
  * - No `any` type — specific types for every field (Rule 0.7.1)
- * - String enums with UPPERCASE values matching PostgreSQL enum definitions
+ * - String enums with lowercase values matching PostgreSQL enum definitions
  *   in `apps/api/src/db/schema/enums.ts`
  * - All price fields are `string` — representing PostgreSQL `numeric(12,4)`,
  *   NEVER JavaScript floating-point `number` (Rule 0.7.2)
@@ -43,9 +43,9 @@ import { Market } from './news.js';
  */
 export enum Direction {
   /** Buy recommendation — enter a long position. */
-  LONG = 'LONG',
+  LONG = 'long',
   /** Sell recommendation — enter a short position. */
-  SHORT = 'SHORT',
+  SHORT = 'short',
 }
 
 // ---------------------------------------------------------------------------
@@ -62,15 +62,15 @@ export enum Direction {
  * |---------------|-----------------------------|
  * | `INTRADAY`    | Same-day trades             |
  * | `SWING`       | Multi-day to multi-week     |
- * | `POSITIONAL`  | Multi-week to multi-month   |
+ * | `POSITION`    | Multi-week to multi-month   |
  */
 export enum Timeframe {
   /** Same-day trades — positions opened and closed within a single trading session. */
-  INTRADAY = 'INTRADAY',
+  INTRADAY = 'intraday',
   /** Multi-day to multi-week trades — capitalizing on short-to-medium term trends. */
-  SWING = 'SWING',
+  SWING = 'swing',
   /** Multi-week to multi-month trades — based on longer-term fundamental catalysts. */
-  POSITIONAL = 'POSITIONAL',
+  POSITION = 'position',
 }
 
 // ---------------------------------------------------------------------------
@@ -92,13 +92,13 @@ export enum Timeframe {
  */
 export enum OpportunityStatus {
   /** Currently actionable — the opportunity is live and tradeable. */
-  ACTIVE = 'ACTIVE',
+  ACTIVE = 'active',
   /** Position closed — either the target was hit or the stop loss was triggered. */
-  CLOSED = 'CLOSED',
+  CLOSED = 'closed',
   /** Opportunity expired — the recommended timeframe has elapsed without entry. */
-  EXPIRED = 'EXPIRED',
+  EXPIRED = 'expired',
   /** Manually cancelled or invalidated by updated analysis. */
-  CANCELLED = 'CANCELLED',
+  CANCELLED = 'cancelled',
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ export interface TradeOpportunity {
    */
   takeProfit: string;
 
-  /** Recommended trade timeframe (INTRADAY, SWING, or POSITIONAL). */
+  /** Recommended trade timeframe (INTRADAY, SWING, or POSITION). */
   timeframe: Timeframe;
 
   /**
