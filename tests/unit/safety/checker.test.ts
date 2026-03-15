@@ -109,6 +109,7 @@ function createSafeHoneypotResult(overrides: Partial<HoneypotResult> = {}): Hone
   return {
     sellable: true,
     estimatedTax: 0.5,
+    quotedAmount: 100000000,
     ...overrides,
   };
 }
@@ -250,6 +251,26 @@ describe('SafetyChecker', () => {
       expect(mockHoneypot.checkHoneypot).toHaveBeenCalledWith(TEST_MINT);
     });
 
+    it('should NOT use Promise.all — RugCheck rejection must not throw', async () => {
+      // If Promise.all were used, RugCheck rejection would propagate as
+      // an unhandled rejection, causing checkToken to throw. With
+      // Promise.allSettled, the rejection is captured and GoPlus data is
+      // still used to produce a partial SafetyReport.
+      (mockRugCheck.getTokenReport as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('RugCheck catastrophic failure'),
+      );
+
+      // Must NOT throw — Promise.allSettled gracefully handles rejections
+      const report = await checker.checkToken(TEST_MINT);
+
+      expect(report).toBeDefined();
+      expect(report.mint).toBe(TEST_MINT);
+      expect(report.rugCheckAvailable).toBe(false);
+      expect(report.goPlusAvailable).toBe(true);
+      // GoPlus data should still be reflected in the report
+      expect(report.goPlusResult).not.toBeNull();
+    });
+
     it('should call LP analyzer after concurrent checks', async () => {
       await checker.checkToken(TEST_MINT);
 
@@ -369,6 +390,28 @@ describe('SafetyChecker', () => {
       expect(report.authorityStatus.mintRevoked).toBe(true);
     });
 
+    it('should merge risk factors from BOTH sources when both report issues', async () => {
+      // RugCheck reports high-severity risk, GoPlus reports mintable
+      mockRugCheck = createMockRugCheckClient(
+        createSafeRugCheckReport({
+          risks: [
+            { name: 'High Holder Concentration', description: 'Top holders dominate', level: 'high', score: 80 },
+          ],
+        }),
+      );
+      mockGoPlus = createMockGoPlusClient(
+        createSafeGoPlusResult({ isMintable: true }),
+      );
+      checker = new SafetyChecker(mockRugCheck, mockGoPlus, mockHoneypot, mockLPAnalyzer);
+
+      const report = await checker.checkToken(TEST_MINT);
+
+      // Should contain risk factors from RugCheck (high-severity risk name)
+      expect(report.riskFactors.some((r) => r.includes('High Holder Concentration'))).toBe(true);
+      // Should contain risk factor from GoPlus worst-case merge (mintable)
+      expect(report.riskFactors.some((r) => r.toLowerCase().includes('mint'))).toBe(true);
+    });
+
     it('should use only GoPlus data when RugCheck is unavailable', async () => {
       (mockRugCheck.getTokenReport as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('RugCheck API timeout'),
@@ -436,6 +479,29 @@ describe('SafetyChecker', () => {
       expect(report.lpStatus.burned).toBe(false);
       expect(report.lpStatus.burnPercent).toBe(0);
       expect(report.lpStatus.locked).toBe(false);
+    });
+
+    it('should include honeypot result even when RugCheck and GoPlus fail', async () => {
+      (mockRugCheck.getTokenReport as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('RugCheck down'),
+      );
+      (mockGoPlus.getTokenSecurity as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('GoPlus down'),
+      );
+      // Honeypot returns valid data — sellable: true
+      (mockHoneypot.checkHoneypot as ReturnType<typeof vi.fn>).mockResolvedValue(
+        createSafeHoneypotResult({ sellable: true, estimatedTax: 3.5, quotedAmount: 50000000 }),
+      );
+
+      const report = await checker.checkToken(TEST_MINT);
+
+      // Honeypot result must be populated even when both safety sources fail
+      expect(report.honeypotResult).toBeDefined();
+      expect(report.honeypotResult.sellable).toBe(true);
+      expect(report.honeypotResult.estimatedTax).toBe(3.5);
+      expect(report.honeypotResult.quotedAmount).toBe(50000000);
+      expect(report.rugCheckAvailable).toBe(false);
+      expect(report.goPlusAvailable).toBe(false);
     });
 
     it('should add data source unavailability to risk factors', async () => {
@@ -610,6 +676,28 @@ describe('SafetyChecker', () => {
 
       expect(report.authorityStatus.freezeRevoked).toBe(false);
       expect(report.riskFactors.some((r) => r.toLowerCase().includes('freeze'))).toBe(true);
+    });
+
+    it('should apply penalty for high top-10 holder concentration (>50%)', async () => {
+      // GoPlus reports top 10 holders control 55% — above the 50% hard filter threshold
+      mockGoPlus = createMockGoPlusClient(
+        createSafeGoPlusResult({ top10HolderPercent: 55, largestHolderPercent: 25 }),
+      );
+      checker = new SafetyChecker(mockRugCheck, mockGoPlus, mockHoneypot, mockLPAnalyzer);
+
+      const baselineReport = await new SafetyChecker(
+        createMockRugCheckClient(),
+        createMockGoPlusClient(),
+        createMockHoneypotDetector(),
+        createMockLPAnalyzer(),
+      ).checkToken(TEST_MINT);
+
+      const penalizedReport = await checker.checkToken(TEST_MINT);
+
+      // Score should be reduced due to both top-10 and single-holder concentration penalties
+      expect(penalizedReport.overallScore).toBeLessThan(baselineReport.overallScore);
+      expect(penalizedReport.top10HolderPercent).toBeGreaterThanOrEqual(55);
+      expect(penalizedReport.riskFactors.some((r) => r.includes('holder'))).toBe(true);
     });
 
     it('should apply no-LP-lock penalty', async () => {
