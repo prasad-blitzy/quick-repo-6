@@ -326,7 +326,7 @@ Stores detected trade opportunities with precise price targets. **CRITICAL:** Al
 | `risk_reward_ratio` | `numeric(5,2)` | NOT NULL | Calculated risk-to-reward ratio |
 | `timeframe` | `timeframe_enum` | NOT NULL | Trade timeframe: `intraday`, `swing`, `position` |
 | `reasoning` | `text` | NOT NULL | AI-generated reasoning for the recommendation |
-| `status` | `status_enum` | NOT NULL, DEFAULT `'active'` | Opportunity status: `active`, `expired`, `closed` |
+| `status` | `status_enum` | NOT NULL, DEFAULT `'active'` | Opportunity status: `active`, `closed`, `expired`, `cancelled` |
 | `expires_at` | `timestamp with time zone` | NULLABLE | Expiration timestamp for the opportunity |
 | `created_at` | `timestamp with time zone` | NOT NULL, DEFAULT `now()` | Record creation timestamp |
 
@@ -401,7 +401,7 @@ Detailed logging of each pipeline step execution for cost tracking, debugging, a
 | `id` | `uuid` | PRIMARY KEY, DEFAULT `gen_random_uuid()` | Unique log entry identifier |
 | `article_id` | `uuid` | NOT NULL, FK → `news_articles.id` | The article being analyzed |
 | `pipeline_step` | `pipeline_step_enum` | NOT NULL | Pipeline stage: `filter`, `sentiment`, `trade_detect`, `recommend` |
-| `model_used` | `text` | NOT NULL | Model identifier (e.g., "deepseek/deepseek-chat", "anthropic/claude-3.5-haiku") |
+| `model_used` | `text` | NOT NULL | Model identifier (e.g., "deepseek/deepseek-v3-0324", "anthropic/claude-haiku-4-5-20241022") |
 | `input_tokens` | `integer` | NOT NULL | Number of input tokens consumed |
 | `output_tokens` | `integer` | NOT NULL | Number of output tokens generated |
 | `cost_usd` | `numeric(8,6)` | NOT NULL | Estimated cost in USD for this inference call |
@@ -424,10 +424,10 @@ Tracks notification delivery status for each subscriber and opportunity combinat
 | `id` | `uuid` | PRIMARY KEY, DEFAULT `gen_random_uuid()` | Unique notification record identifier |
 | `opportunity_id` | `uuid` | NOT NULL, FK → `trade_opportunities.id` | The trade opportunity being notified |
 | `user_id` | `uuid` | NOT NULL, FK → `user_settings.id` | The subscriber receiving the notification |
-| `message_text` | `text` | NOT NULL | Formatted MarkdownV2 message content |
-| `status` | `notification_status_enum` | NOT NULL, DEFAULT `'pending'` | Delivery status: `sent`, `failed`, `pending` |
-| `telegram_message_id` | `text` | NULLABLE | Telegram API response message ID |
-| `error_message` | `text` | NULLABLE | Error details if delivery failed |
+| `telegram_message_id` | `integer` | NULLABLE | Telegram API response message ID |
+| `status` | `text` | NOT NULL, DEFAULT `'pending'` | Delivery status: `pending`, `sent`, `failed`, `skipped` |
+| `error` | `text` | NULLABLE | Error details if delivery failed |
+| `sent_at` | `timestamp with time zone` | NULLABLE | Timestamp when notification was actually sent |
 | `created_at` | `timestamp with time zone` | NOT NULL, DEFAULT `now()` | Notification attempt timestamp |
 
 **Indexes:**
@@ -445,7 +445,7 @@ The following custom PostgreSQL enum types are shared across multiple tables:
 | `market_enum` | `us_stock`, `indian_equity`, `crypto`, `social` | `news_articles.market`, `trade_opportunities.market` |
 | `direction_enum` | `long`, `short` | `trade_opportunities.direction` |
 | `timeframe_enum` | `intraday`, `swing`, `position` | `trade_opportunities.timeframe` |
-| `status_enum` | `active`, `expired`, `closed` | `trade_opportunities.status` |
+| `status_enum` | `active`, `closed`, `expired`, `cancelled` | `trade_opportunities.status` |
 | `pipeline_step_enum` | `filter`, `sentiment`, `trade_detect`, `recommend` | `analysis_logs.pipeline_step` |
 | `notification_status_enum` | `sent`, `failed`, `pending` | `notification_logs.status` |
 
@@ -557,10 +557,10 @@ erDiagram
         uuid id PK
         uuid opportunity_id FK
         uuid user_id FK
-        text message_text
-        notification_status_enum status
-        text telegram_message_id
-        text error_message
+        integer telegram_message_id
+        text status
+        text error
+        timestamptz sent_at
         timestamptz created_at
     }
 ```
@@ -577,35 +577,35 @@ The pipeline consists of four sequential processing stages, each backed by a spe
 
 **1. Filter Node — Binary Relevance Classifier**
 
-- **Model:** DeepSeek V3.2 via OpenRouter (`deepseek/deepseek-chat`)
+- **Model:** DeepSeek V3.2 via OpenRouter (`deepseek/deepseek-v3-0324`)
 - **Cost:** $0.25 / $0.38 per 1M tokens (input/output)
 - **Purpose:** Determines whether an article contains actionable financial information worth further analysis. Performs a simple binary classification: relevant or not relevant.
 - **Behavior:** Approximately 75% of ingested articles are filtered out at this stage (general market commentary, opinion pieces, duplicate coverage). Only articles classified as relevant proceed to the Sentiment node.
-- **Output:** `FilterResult` Zod schema — `{ is_relevant: boolean, reasoning: string }`
+- **Output:** `FilterResult` Zod schema — `{ isRelevant: boolean, relevanceScore: number, reasoning: string }`
 
 **2. Sentiment Node — Nuanced Sentiment Analysis**
 
-- **Model:** Claude Haiku 4.5 via OpenRouter (`anthropic/claude-3.5-haiku`)
+- **Model:** Claude Haiku 4.5 via OpenRouter (`anthropic/claude-haiku-4-5-20241022`)
 - **Cost:** $1.00 / $5.00 per 1M tokens (input/output)
 - **Purpose:** Performs nuanced financial sentiment analysis with a score ranging from -1.000 (extremely bearish) to +1.000 (extremely bullish).
 - **Behavior:** Applies DK-CoT (Domain Knowledge Chain-of-Thought) prompting with financial domain expertise. **Critically, negative news is weighted 2–3x higher than positive news** to reflect empirical research showing that negative financial events have disproportionate market impact (Rule 0.7.3).
-- **Output:** `SentimentResult` Zod schema — `{ score: number, label: string, reasoning: string, key_phrases: string[] }`
+- **Output:** `SentimentResult` Zod schema — `{ sentimentScore: number, sentimentLabel: string, reasoning: string, keyFactors: string[] }`
 
 **3. Trade Detection Node — Opportunity Identification**
 
-- **Model:** Claude Haiku 4.5 via OpenRouter (`anthropic/claude-3.5-haiku`)
+- **Model:** Claude Haiku 4.5 via OpenRouter (`anthropic/claude-haiku-4-5-20241022`)
 - **Cost:** $1.00 / $5.00 per 1M tokens (input/output)
 - **Purpose:** Identifies whether the article implies a specific, actionable trade opportunity — including the symbol, direction (long/short), and suggested timeframe.
 - **Behavior:** Evaluates the article content combined with the sentiment score to determine if there is a concrete trading signal. Articles with only general sentiment (no specific trade setup) are terminated here.
-- **Output:** `TradeDetectionResult` Zod schema — `{ has_opportunity: boolean, symbol: string, direction: "long"|"short", timeframe: string, reasoning: string }`
+- **Output:** `TradeDetectionResult` Zod schema — `{ tradeDetected: boolean, symbol?: string, direction?: "long"|"short", timeframe?: string, reasoning: string, signalStrength: number }`
 
 **4. Recommendation Node — Structured Trade Recommendation**
 
-- **Model:** Claude Sonnet 4.6 via OpenRouter (`anthropic/claude-sonnet-4-20250514`)
+- **Model:** Claude Sonnet 4.6 via OpenRouter (`anthropic/claude-sonnet-4-6-20250514`)
 - **Cost:** $3.00 / $15.00 per 1M tokens (input/output)
 - **Purpose:** Generates a complete, structured trade recommendation with precise price targets (entry, stop loss, take profit), confidence score, risk-reward ratio, and detailed reasoning.
 - **Behavior:** Only approximately 25% of original articles reach this stage. Uses `withStructuredOutput()` with a comprehensive Zod schema to produce machine-parseable recommendations. All generated price targets are cross-validated against actual market data from API sources — any price more than 10% away from current market price is flagged for review.
-- **Output:** `TradeRecommendation` Zod schema — `{ symbol, direction, confidence, entry_price, stop_loss, take_profit, risk_reward_ratio, timeframe, reasoning, key_catalysts: string[] }`
+- **Output:** `TradeRecommendation` Zod schema — `{ symbol, market, direction, confidence, entryPrice, stopLoss, takeProfit, riskRewardRatio, timeframe, reasoning, catalystExpiry?: string }`
 
 ### Pipeline Flow Diagram
 
@@ -636,8 +636,8 @@ The pipeline uses LangGraph.js conditional edges to implement early termination,
 
 | Exit Point | Condition | Effect | Estimated Exit Rate |
 |---|---|---|---|
-| After Filter | `is_relevant === false` | Skip Sentiment, Trade Detection, and Recommendation | ~75% of articles |
-| After Trade Detection | `has_opportunity === false` | Skip Recommendation only | ~50% of remaining articles |
+| After Filter | `isRelevant === false` | Skip Sentiment, Trade Detection, and Recommendation | ~75% of articles |
+| After Trade Detection | `tradeDetected === false` | Skip Recommendation only | ~50% of remaining articles |
 | After Recommendation | Pipeline complete | Full recommendation stored | ~25% of original articles |
 
 **Cost Impact Example (1,000 articles/day):**
@@ -652,10 +652,10 @@ The pipeline uses LangGraph.js conditional edges to implement early termination,
 
 | Stage | Model | OpenRouter ID | Cost (Input / Output per 1M tokens) | Rationale |
 |---|---|---|---|---|
-| Filter | DeepSeek V3.2 | `deepseek/deepseek-chat` | $0.25 / $0.38 | Binary classification at high volume — cheapest model sufficient |
-| Sentiment | Claude Haiku 4.5 | `anthropic/claude-3.5-haiku` | $1.00 / $5.00 | Nuanced language understanding for financial sentiment |
-| Trade Detection | Claude Haiku 4.5 | `anthropic/claude-3.5-haiku` | $1.00 / $5.00 | Moderate analytical reasoning for opportunity identification |
-| Recommendation | Claude Sonnet 4.6 | `anthropic/claude-sonnet-4-20250514` | $3.00 / $15.00 | Complex reasoning for precise price targets and structured output |
+| Filter | DeepSeek V3.2 | `deepseek/deepseek-v3-0324` | $0.25 / $0.38 | Binary classification at high volume — cheapest model sufficient |
+| Sentiment | Claude Haiku 4.5 | `anthropic/claude-haiku-4-5-20241022` | $1.00 / $5.00 | Nuanced language understanding for financial sentiment |
+| Trade Detection | Claude Haiku 4.5 | `anthropic/claude-haiku-4-5-20241022` | $1.00 / $5.00 | Moderate analytical reasoning for opportunity identification |
+| Recommendation | Claude Sonnet 4.6 | `anthropic/claude-sonnet-4-6-20250514` | $3.00 / $15.00 | Complex reasoning for precise price targets and structured output |
 
 All models are accessed through OpenRouter's unified API gateway using `ChatOpenAI` from `@langchain/openai` with custom `baseURL: "https://openrouter.ai/api/v1"` and the `OPENROUTER_API_KEY` environment variable.
 
@@ -685,8 +685,9 @@ Each pipeline stage produces output conforming to a strict Zod schema:
 
 ```typescript
 const FilterResultSchema = z.object({
-  is_relevant: z.boolean().describe("Whether the article contains actionable financial information"),
-  reasoning: z.string().describe("Brief explanation of the relevance determination"),
+  isRelevant: z.boolean().describe("Whether the article is financially relevant"),
+  relevanceScore: z.number().min(0).max(1).describe("Relevance score from 0.0 to 1.0"),
+  reasoning: z.string().describe("Brief explanation of relevance determination"),
 });
 ```
 
@@ -694,10 +695,10 @@ const FilterResultSchema = z.object({
 
 ```typescript
 const SentimentResultSchema = z.object({
-  score: z.number().min(-1).max(1).describe("Sentiment score from -1.0 (bearish) to 1.0 (bullish)"),
-  label: z.enum(["very_bearish", "bearish", "neutral", "bullish", "very_bullish"]).describe("Human-readable sentiment label"),
-  reasoning: z.string().describe("Chain-of-thought reasoning for the sentiment determination"),
-  key_phrases: z.array(z.string()).describe("Key phrases from the article that influenced the sentiment score"),
+  sentimentScore: z.number().min(-1).max(1).describe("Sentiment score from -1.0 (most negative) to 1.0 (most positive)"),
+  sentimentLabel: z.enum(["strongly_negative", "moderately_negative", "slightly_negative", "neutral", "slightly_positive", "moderately_positive", "strongly_positive"]).describe("Human-readable sentiment label"),
+  reasoning: z.string().describe("Detailed sentiment analysis incorporating financial domain knowledge"),
+  keyFactors: z.array(z.string()).describe("Array of key factors driving the sentiment determination"),
 });
 ```
 
@@ -705,11 +706,12 @@ const SentimentResultSchema = z.object({
 
 ```typescript
 const TradeDetectionResultSchema = z.object({
-  has_opportunity: z.boolean().describe("Whether a specific trade opportunity exists"),
-  symbol: z.string().describe("Ticker symbol (e.g., AAPL, RELIANCE.NS, BTC)"),
-  direction: z.enum(["long", "short"]).describe("Recommended trade direction"),
-  timeframe: z.enum(["intraday", "swing", "position"]).describe("Suggested holding period"),
-  reasoning: z.string().describe("Explanation of why this trade opportunity was identified"),
+  tradeDetected: z.boolean().describe("Whether an actionable trade opportunity was detected"),
+  symbol: z.string().optional().describe("Ticker symbol (e.g., AAPL, RELIANCE.NS, BTC)"),
+  direction: z.enum(["long", "short"]).optional().describe("Recommended trade direction"),
+  timeframe: z.enum(["intraday", "swing", "position"]).optional().describe("Suggested holding period"),
+  reasoning: z.string().describe("Explanation of the trade detection determination"),
+  signalStrength: z.number().min(0).max(1).describe("Strength of the detected trade signal from 0.0 to 1.0"),
 });
 ```
 
@@ -717,16 +719,17 @@ const TradeDetectionResultSchema = z.object({
 
 ```typescript
 const TradeRecommendationSchema = z.object({
-  symbol: z.string().describe("Ticker symbol"),
+  symbol: z.string().describe("Stock/crypto ticker symbol"),
+  market: z.enum(["us_stock", "indian_equity", "crypto"]).describe("Market category"),
   direction: z.enum(["long", "short"]).describe("Trade direction"),
   confidence: z.number().min(0).max(1).describe("Confidence score from 0.00 to 1.00"),
-  entry_price: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Recommended entry price as decimal string"),
-  stop_loss: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Stop loss price level as decimal string"),
-  take_profit: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Take profit target price as decimal string"),
-  risk_reward_ratio: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Risk-to-reward ratio as decimal string"),
+  entryPrice: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Recommended entry price as decimal string"),
+  stopLoss: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Stop loss price level as decimal string"),
+  takeProfit: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Take profit target price as decimal string"),
+  riskRewardRatio: z.string().regex(/^\d+(\.\d{1,4})?$/).describe("Risk-to-reward ratio as decimal string"),
   timeframe: z.enum(["intraday", "swing", "position"]).describe("Trade timeframe"),
-  reasoning: z.string().describe("Detailed reasoning for the recommendation"),
-  key_catalysts: z.array(z.string()).describe("Key catalysts supporting the trade thesis"),
+  reasoning: z.string().describe("Detailed reasoning incorporating domain knowledge"),
+  catalystExpiry: z.string().optional().describe("ISO 8601 date when catalyst relevance expires"),
 });
 ```
 
@@ -931,7 +934,7 @@ The application uses BullMQ v5.71.x with Redis 7 for all background job processi
 4. For each matching subscriber, calls the message formatter to build a MarkdownV2-formatted alert
 5. Sends the formatted message via `bot.api.sendMessage()` with `parse_mode: "MarkdownV2"`
 6. Logs each delivery attempt to the `notification_logs` table with status (`sent`, `failed`, `pending`)
-7. On failure, the error message is recorded in `notification_logs.error_message` for debugging
+7. On failure, the error message is recorded in `notification_logs.error` for debugging
 
 ### Shared Queue Configuration
 
@@ -1096,31 +1099,36 @@ Retrieves a paginated list of news articles with optional filtering.
 | `limit` | integer | `20` | Items per page (max 100) |
 | `market` | string | — | Filter by market: `us_stock`, `indian_equity`, `crypto`, `social` |
 | `source` | string | — | Filter by source name (e.g., "finnhub", "economic-times-rss") |
-| `startDate` | ISO 8601 | — | Filter articles published after this date |
-| `endDate` | ISO 8601 | — | Filter articles published before this date |
+| `from` | ISO 8601 datetime | — | Filter articles published after this datetime (e.g., `2026-03-01T00:00:00Z`) |
+| `to` | ISO 8601 datetime | — | Filter articles published before this datetime |
+| `isAnalyzed` | boolean | — | Filter by analysis status (`true` or `false`) |
+| `sortOrder` | string | `desc` | Sort direction: `asc` or `desc` |
 
 **Response:**
 
 ```json
 {
-  "data": [
-    {
-      "id": "uuid",
-      "title": "Article headline",
-      "url": "https://...",
-      "source": "finnhub",
-      "summary": "Brief summary...",
-      "published_at": "2026-03-14T10:30:00Z",
-      "symbols": ["AAPL", "MSFT"],
-      "market": "us_stock",
-      "is_analyzed": true
+  "success": true,
+  "data": {
+    "data": [
+      {
+        "id": "uuid",
+        "title": "Article headline",
+        "url": "https://...",
+        "source": "finnhub",
+        "summary": "Brief summary...",
+        "publishedAt": "2026-03-14T10:30:00Z",
+        "symbols": ["AAPL", "MSFT"],
+        "market": "us_stock",
+        "isAnalyzed": true
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 450,
+      "totalPages": 23
     }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 450,
-    "totalPages": 23
   }
 }
 ```
@@ -1136,40 +1144,45 @@ Retrieves a paginated, filterable, sortable list of trade opportunities.
 | `page` | integer | `1` | Page number |
 | `limit` | integer | `20` | Items per page (max 100) |
 | `market` | string | — | Filter by market category |
-| `status` | string | — | Filter by status: `active`, `expired`, `closed` |
+| `status` | string | — | Filter by status: `active`, `closed`, `expired`, `cancelled` |
 | `direction` | string | — | Filter by direction: `long`, `short` |
 | `minConfidence` | number | — | Minimum confidence threshold (0.00–1.00) |
-| `sortBy` | string | `created_at` | Sort field: `created_at`, `confidence`, `risk_reward_ratio` |
+| `timeframe` | string | — | Filter by timeframe: `intraday`, `swing`, `position` |
+| `symbol` | string | — | Filter by trading symbol (e.g., `AAPL`, `BTC`) |
+| `sortBy` | string | `createdAt` | Sort field: `createdAt`, `confidence` |
 | `sortOrder` | string | `desc` | Sort direction: `asc`, `desc` |
 
 **Response:**
 
 ```json
 {
-  "data": [
-    {
-      "id": "uuid",
-      "article_id": "uuid",
-      "symbol": "AAPL",
-      "market": "us_stock",
-      "direction": "long",
-      "confidence": 0.85,
-      "entry_price": "182.5000",
-      "stop_loss": "178.0000",
-      "take_profit": "195.0000",
-      "risk_reward_ratio": "2.78",
-      "timeframe": "swing",
-      "reasoning": "Strong Q1 earnings...",
-      "status": "active",
-      "expires_at": "2026-03-21T00:00:00Z",
-      "created_at": "2026-03-14T10:35:00Z"
+  "success": true,
+  "data": {
+    "data": [
+      {
+        "id": "uuid",
+        "articleId": "uuid",
+        "symbol": "AAPL",
+        "market": "us_stock",
+        "direction": "long",
+        "confidence": 0.85,
+        "entryPrice": "182.5000",
+        "stopLoss": "178.0000",
+        "takeProfit": "195.0000",
+        "riskRewardRatio": "2.78",
+        "timeframe": "swing",
+        "reasoning": "Strong Q1 earnings...",
+        "status": "active",
+        "expiresAt": "2026-03-21T00:00:00Z",
+        "createdAt": "2026-03-14T10:35:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 35,
+      "totalPages": 2
     }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 35,
-    "totalPages": 2
   }
 }
 ```
@@ -1182,33 +1195,31 @@ Retrieves performance tracking data with aggregation options.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `startDate` | ISO 8601 | 30 days ago | Start of reporting period |
-| `endDate` | ISO 8601 | now | End of reporting period |
+| `startDate` | ISO 8601 datetime | 30 days ago | Start of reporting period (e.g., `2026-01-01T00:00:00Z`) |
+| `endDate` | ISO 8601 datetime | now | End of reporting period |
 | `market` | string | — | Filter by market category |
-| `aggregation` | string | `daily` | Aggregation period: `daily`, `weekly`, `monthly` |
 
 **Response:**
 
 ```json
 {
-  "summary": {
-    "total_opportunities": 120,
-    "closed_trades": 85,
-    "win_rate": 0.62,
-    "total_pnl_percentage": 15.8,
-    "avg_risk_reward": 2.1,
-    "best_trade_pnl": 8.5,
-    "worst_trade_pnl": -3.2
-  },
-  "by_market": {
-    "us_stock": { "count": 45, "win_rate": 0.64, "pnl_percentage": 8.2 },
-    "indian_equity": { "count": 25, "win_rate": 0.60, "pnl_percentage": 4.1 },
-    "crypto": { "count": 35, "win_rate": 0.60, "pnl_percentage": 3.5 }
-  },
-  "timeline": [
-    { "date": "2026-03-01", "trades": 5, "wins": 3, "pnl_percentage": 2.1 },
-    { "date": "2026-03-02", "trades": 4, "wins": 2, "pnl_percentage": -0.5 }
-  ]
+  "success": true,
+  "data": {
+    "summary": {
+      "totalTrades": 120,
+      "wins": 74,
+      "losses": 46,
+      "winRate": 0.6167,
+      "totalPnl": "15.8000",
+      "averagePnl": "0.1317",
+      "bestTrade": "8.5000",
+      "worstTrade": "-3.2000",
+      "averageHoldTime": "N/A"
+    },
+    "chartData": [],
+    "marketBreakdown": [],
+    "recentTrades": []
+  }
 }
 ```
 
@@ -1220,15 +1231,18 @@ Retrieves user settings for the given Telegram chat ID.
 
 ```json
 {
-  "id": "uuid",
-  "telegram_chat_id": "123456789",
-  "telegram_username": "trader_john",
-  "markets": ["us_stock", "crypto"],
-  "min_confidence": 0.70,
-  "timeframes": ["swing", "position"],
-  "is_active": true,
-  "created_at": "2026-03-01T00:00:00Z",
-  "updated_at": "2026-03-14T10:00:00Z"
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "telegramChatId": "123456789",
+    "telegramUsername": "trader_john",
+    "markets": ["us_stock", "crypto"],
+    "minConfidence": "0.70",
+    "timeframes": ["swing", "position"],
+    "isActive": true,
+    "createdAt": "2026-03-01T00:00:00Z",
+    "updatedAt": "2026-03-14T10:00:00Z"
+  }
 }
 ```
 
@@ -1243,45 +1257,43 @@ Updates user preference fields for the given Telegram chat ID.
 ```json
 {
   "markets": ["us_stock", "crypto"],
-  "min_confidence": 0.80,
+  "minConfidence": 0.80,
   "timeframes": ["swing"],
-  "is_active": true
+  "isActive": true
 }
 ```
 
-All fields are optional — only provided fields are updated. Returns the updated user settings object.
+All fields are optional — only provided fields are updated. Returns the updated user settings object wrapped in the standard success envelope.
 
 #### GET /api/health
 
-Reports system health status including dependency connectivity and queue depths.
+Reports system health status including dependency connectivity and API source status.
 
 **Response:**
 
 ```json
 {
+  "success": true,
   "status": "healthy",
-  "timestamp": "2026-03-14T10:30:00Z",
-  "dependencies": {
-    "postgresql": { "status": "connected", "latency_ms": 2 },
-    "redis": { "status": "connected", "latency_ms": 1 }
+  "data": {
+    "status": "healthy",
+    "postgres": true,
+    "redis": true,
+    "lastChecked": "2026-03-14T10:30:00Z"
   },
-  "queues": {
-    "news-polling": { "waiting": 0, "active": 1, "completed": 288, "failed": 0 },
-    "analysis": { "waiting": 5, "active": 3, "completed": 1250, "failed": 2 },
-    "notifications": { "waiting": 0, "active": 0, "completed": 450, "failed": 1 }
+  "checks": {
+    "database": { "status": "up", "latencyMs": 2 },
+    "redis": { "status": "up", "latencyMs": 1 },
+    "apiSources": { "total": 8, "enabled": 8, "errored": 1 }
   },
-  "api_sources": [
-    { "name": "Finnhub", "status": "healthy", "last_fetched": "2026-03-14T10:25:00Z", "error_count": 0 },
-    { "name": "CoinGecko", "status": "healthy", "last_fetched": "2026-03-14T10:25:00Z", "error_count": 0 },
-    { "name": "Alpha Vantage", "status": "degraded", "last_fetched": "2026-03-14T09:00:00Z", "error_count": 3 }
-  ],
-  "uptime_seconds": 86400
+  "uptime": 86400.42,
+  "timestamp": "2026-03-14T10:30:00Z"
 }
 ```
 
 Overall status logic:
-- `healthy` — All dependencies connected, no queues with excessive failures
-- `degraded` — One or more dependencies have elevated error counts or latency
+- `healthy` — All dependencies connected (postgres and redis both `true`)
+- `degraded` — One or more checks report errors or elevated latency
 - `unhealthy` — Core dependencies (PostgreSQL or Redis) are disconnected
 
 ### Middleware Stack
@@ -1537,16 +1549,14 @@ The application is containerized for local development and production deployment
 
 **Docker Compose (Local Development):**
 
-The `docker-compose.yml` at the project root defines four services:
+The `docker-compose.yml` at the project root defines two infrastructure services. The API and web applications are run directly via `pnpm dev` during development:
 
 | Service | Image | Port | Purpose |
 |---|---|---|---|
 | `postgres` | `postgres:16-alpine` | 5432 | PostgreSQL 16 database with healthcheck (`pg_isready`) |
 | `redis` | `redis:7-alpine` | 6379 | Redis 7 with `appendonly yes` persistence and healthcheck (`redis-cli ping`) |
-| `api` | Built from `apps/api/Dockerfile` | 3000 | Express backend (depends on postgres, redis) |
-| `web` | Built from `apps/web/` or Vite dev server | 5173 | React frontend (depends on api) |
 
-Environment variables are passed via `.env` file and Docker Compose `env_file` directive.
+The API server (`apps/api`) and web dashboard (`apps/web`) are started via `pnpm dev` which uses Turborepo to run both development servers concurrently.
 
 **Multi-Stage Dockerfile (Backend — `apps/api/Dockerfile`):**
 
@@ -1619,11 +1629,9 @@ All environment variables are documented in `.env.example` at the project root:
 | `NODE_ENV` | `development` | Environment mode |
 | `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin for the frontend |
 | `LOG_LEVEL` | `info` | Pino log level (debug, info, warn, error) |
-| `POLLING_INTERVAL_CRON` | `*/5 * * * *` | News polling cron schedule |
+| `NEWS_POLL_INTERVAL` | `*/5 * * * *` | News polling cron schedule |
 | `ANALYSIS_CONCURRENCY` | `3` | Analysis worker concurrency |
 | `NOTIFICATION_CONCURRENCY` | `5` | Notification worker concurrency |
-| `SUPABASE_URL` | — | Supabase project URL (only when `DATABASE_PROVIDER=supabase`) |
-| `SUPABASE_ANON_KEY` | — | Supabase anonymous key (only when `DATABASE_PROVIDER=supabase`) |
 
 **Supabase Compatibility (Rule 0.7.4):**
 

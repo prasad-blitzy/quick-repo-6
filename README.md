@@ -93,7 +93,7 @@ This project is structured as a **Turborepo + pnpm workspaces monorepo** with th
 | **Frontend** | React + Vite + Recharts | 19.x + 6.x + ^2.15.x |
 | **Logging** | Pino | ^10.x |
 | **Rate Limiting** | Bottleneck | ^2.19.x |
-| **Validation** | Zod | ^3.24.x |
+| **Validation** | Zod | ^3.25.x |
 | **Queue Dashboard** | Bull Board | ^6.20.x |
 
 ### LLM Cost Strategy
@@ -511,8 +511,7 @@ Copy `.env.example` to `.env` and configure the following variables. See `.env.e
 | `PORT` | Express server port | `3000` |
 | `LOG_LEVEL` | Pino log level (`debug`, `info`, `warn`, `error`) | `info` |
 | `NEWS_POLL_INTERVAL` | News polling cron expression | `*/5 * * * *` (every 5 min) |
-| `DATABASE_PROVIDER` | Toggle database connection mode (`local` / `supabase`) | `local` |
-| `SUPABASE_URL` | Supabase project URL (when `DATABASE_PROVIDER=supabase`) | — |
+| `DATABASE_PROVIDER` | Toggle database connection mode (`local` / `supabase`). When set to `supabase`, use the Supabase connection string in `DATABASE_URL`. | `local` |
 
 ---
 
@@ -545,9 +544,6 @@ pnpm --filter api db:push
 
 # Run database seed script
 pnpm --filter api db:seed
-
-# Type-check all workspaces
-pnpm typecheck
 ```
 
 ### Development Workflow

@@ -711,7 +711,7 @@ curl -s "http://localhost:3000/api/opportunities?market=us_stock&status=active&m
 # → { "success": true, "data": [...], "pagination": { ... } }
 
 # Test performance endpoint
-curl -s "http://localhost:3000/api/performance?startDate=2026-01-01" | jq .
+curl -s "http://localhost:3000/api/performance?startDate=2026-01-01T00:00:00Z" | jq .
 # → { "success": true, "data": { "winRate": ..., "totalPnl": ..., "avgProfit": ..., ... } }
 
 # Test settings endpoints
@@ -1004,7 +1004,7 @@ The application supports two database providers via the `DATABASE_PROVIDER` envi
 
 ```env
 DATABASE_PROVIDER=local
-DATABASE_URL=postgresql://trading:trading_secret@localhost:5432/trading_intelligence
+DATABASE_URL=postgresql://trading:trading_password@localhost:5432/trading_intelligence
 ```
 
 Start with Docker Compose:
@@ -1106,7 +1106,7 @@ docker exec trading-intel-redis redis-cli ping
 # Verify rate limiter state
 # Check api_sources table for error counts and last success timestamps
 docker exec trading-intel-postgres psql -U trading -d trading_intelligence \
-  -c "SELECT name, is_active, error_count, last_success_at FROM api_sources;"
+  -c "SELECT name, is_active, error_count, last_fetched_at FROM api_sources;"
 ```
 
 ---
