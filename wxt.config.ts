@@ -143,5 +143,25 @@ export default defineConfig({
       'https://api.anthropic.com/*',
       'wss://pumpportal.fun/*',
     ],
+
+    /**
+     * Web-accessible resources declaration for the page-context injected script.
+     *
+     * The content script (content.ts) injects injected.js into the GMGN page
+     * via a <script> tag whose src is set to chrome.runtime.getURL('/injected.js').
+     * Chrome Manifest V3 requires scripts loaded by web pages to be explicitly
+     * declared in web_accessible_resources — otherwise Chrome blocks the load with:
+     * "Denying load of chrome-extension://[id]/injected.js. Resources must be listed
+     * in the web_accessible_resources manifest key."
+     *
+     * Only gmgn.ai pages are permitted to access this resource, limiting exposure
+     * of extension internals to the target site per AAP §0.7.2.
+     */
+    web_accessible_resources: [
+      {
+        resources: ['injected.js'],
+        matches: ['https://gmgn.ai/*'],
+      },
+    ],
   },
 });
