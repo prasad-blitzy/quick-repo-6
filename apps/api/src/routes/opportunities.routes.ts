@@ -48,6 +48,29 @@ import { createLogger } from "../lib/logger.js";
 import { opportunitiesFilterSchema } from "@trading-intelligence/utils";
 
 // ---------------------------------------------------------------------------
+// Market Value Mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps uppercase API-facing market identifiers to their lowercase PostgreSQL
+ * enum equivalents stored in the `trade_opportunities.market` column.
+ *
+ * Ensures a consistent API contract across all endpoints — the performance
+ * endpoint already accepts uppercase values (US, INDIA, CRYPTO, SOCIAL), and
+ * this map brings the opportunities endpoint into alignment.
+ *
+ * Used during query normalization in Step 1 of the GET handler to convert
+ * incoming uppercase market params to their DB enum equivalents before
+ * Zod validation.
+ */
+const MARKET_DB_MAP: Record<string, string> = {
+  US: "us_stock",
+  INDIA: "indian_equity",
+  CRYPTO: "crypto",
+  SOCIAL: "social",
+};
+
+// ---------------------------------------------------------------------------
 // Logger — Namespaced child logger for structured debug output
 // ---------------------------------------------------------------------------
 
@@ -99,12 +122,26 @@ opportunitiesRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // -----------------------------------------------------------------------
-      // Step 1: Parse and validate query parameters
+      // Step 1: Normalize market query parameter and validate via Zod
       // -----------------------------------------------------------------------
+      // Pre-process the market query parameter to accept both uppercase
+      // API values (US, INDIA, CRYPTO, SOCIAL) and lowercase DB enum
+      // values (us_stock, indian_equity, crypto, social). This ensures
+      // a consistent API contract across all endpoints — the performance
+      // endpoint already accepts uppercase values, and this normalization
+      // brings the opportunities endpoint into alignment.
+      const normalizedQuery = { ...req.query };
+      if (
+        typeof normalizedQuery.market === "string" &&
+        MARKET_DB_MAP[normalizedQuery.market] !== undefined
+      ) {
+        normalizedQuery.market = MARKET_DB_MAP[normalizedQuery.market];
+      }
+
       // The Zod schema coerces string query params to numbers where needed,
       // applies defaults (page=1, limit=20, sortOrder='desc'), and validates
       // enum values against the exact PostgreSQL enum definitions.
-      const parsed = opportunitiesFilterSchema.safeParse(req.query);
+      const parsed = opportunitiesFilterSchema.safeParse(normalizedQuery);
 
       if (!parsed.success) {
         res.status(400).json({
@@ -133,9 +170,10 @@ opportunitiesRouter.get(
       // -----------------------------------------------------------------------
       // Step 2: Build dynamic WHERE conditions
       // -----------------------------------------------------------------------
-      // The Zod schema validates enum values to match the exact lowercase
-      // PostgreSQL enum values (us_stock, indian_equity, crypto, social, etc.),
-      // so no uppercase-to-lowercase mapping is needed. Each filter condition
+      // Uppercase market values (US, INDIA, CRYPTO, SOCIAL) are pre-normalized
+      // to lowercase DB enum values in Step 1 above via MARKET_DB_MAP.
+      // The Zod schema then validates the normalized enum values against the
+      // exact lowercase PostgreSQL enum definitions. Each filter condition
       // is only appended when the corresponding query parameter is present.
       const conditions: SQL[] = [];
 

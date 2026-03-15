@@ -33,14 +33,15 @@
  * Design decisions:
  *  - No middleware in aggregator — route-specific middleware belongs in
  *    individual route files
- *  - No catch-all 404 route — handled by the global error handler middleware
- *    in `apps/api/src/middleware/error-handler.ts`
+ *  - Catch-all 404 handler at the END of all route registrations returns
+ *    JSON `{"error":{"message":"Not Found","code":"NOT_FOUND"}}` instead
+ *    of Express's default HTML error page
  *  - Named export only — no default export for tree-shaking compatibility
  *
  * @module routes
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 
 import { newsRouter } from "./news.routes.js";
 import { opportunitiesRouter } from "./opportunities.routes.js";
@@ -83,3 +84,27 @@ apiRouter.use("/api", settingsRouter);
 
 // Health check — GET /api/health (PostgreSQL, Redis, API source status)
 apiRouter.use("/api", healthRouter);
+
+// ---------------------------------------------------------------------------
+// Catch-All 404 Handler — MUST be after all route registrations
+// ---------------------------------------------------------------------------
+
+/**
+ * Catches all requests that did not match any registered route above and
+ * returns a JSON 404 response instead of Express's default HTML error page.
+ *
+ * This handler covers two scenarios:
+ *  1. Unmatched paths — e.g., `GET /api/nonexistent`
+ *  2. Unsupported methods — e.g., `DELETE /api/health` (only GET is defined)
+ *
+ * CRITICAL: This middleware MUST remain at the END of all route registrations.
+ * Any routes added after this handler will be unreachable.
+ */
+apiRouter.use("/api", (_req: Request, res: Response): void => {
+  res.status(404).json({
+    error: {
+      message: "Not Found",
+      code: "NOT_FOUND",
+    },
+  });
+});

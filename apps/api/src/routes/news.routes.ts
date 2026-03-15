@@ -10,7 +10,7 @@
  *  - page:       number (default 1) — Page number (1-indexed)
  *  - limit:      number (default 20, max 100) — Items per page
  *  - sortOrder:  'asc' | 'desc' (default 'desc') — Sort on publishedAt
- *  - market:     'us_stock' | 'indian_equity' | 'crypto' | 'social' (optional)
+ *  - market:     'US' | 'INDIA' | 'CRYPTO' | 'SOCIAL' or 'us_stock' | 'indian_equity' | 'crypto' | 'social' (optional)
  *  - source:     string (optional) — Filter by news source name
  *  - isAnalyzed: boolean (optional) — Filter by analysis pipeline status
  *  - from:       ISO 8601 datetime (optional) — Start of date range (inclusive)
@@ -73,6 +73,28 @@ import { newsFilterSchema } from "@trading-intelligence/utils";
 const logger = createLogger("routes:news");
 
 // ---------------------------------------------------------------------------
+// Market Value Mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps uppercase API-facing market identifiers to their lowercase PostgreSQL
+ * enum equivalents stored in the `news_articles.market` column.
+ *
+ * Ensures a consistent API contract across all endpoints — the performance
+ * endpoint already accepts uppercase values (US, INDIA, CRYPTO, SOCIAL), and
+ * this map brings the news endpoint into alignment.
+ *
+ * The `as const` assertion preserves literal types for TypeScript exhaustive
+ * coverage verification.
+ */
+const MARKET_DB_MAP: Record<string, string> = {
+  US: "us_stock",
+  INDIA: "indian_equity",
+  CRYPTO: "crypto",
+  SOCIAL: "social",
+};
+
+// ---------------------------------------------------------------------------
 // Router Instance
 // ---------------------------------------------------------------------------
 
@@ -111,11 +133,25 @@ newsRouter.get(
   ): Promise<void> => {
     try {
       // -------------------------------------------------------------------
-      // Step 1: Parse and validate query parameters via Zod
+      // Step 1: Normalize market query parameter and validate via Zod
       // -------------------------------------------------------------------
+      // Pre-process the market query parameter to accept both uppercase
+      // API values (US, INDIA, CRYPTO, SOCIAL) and lowercase DB enum
+      // values (us_stock, indian_equity, crypto, social). This ensures
+      // a consistent API contract across all endpoints — the performance
+      // endpoint already accepts uppercase values, and this normalization
+      // brings the news endpoint into alignment.
+      const normalizedQuery = { ...req.query };
+      if (
+        typeof normalizedQuery.market === "string" &&
+        MARKET_DB_MAP[normalizedQuery.market] !== undefined
+      ) {
+        normalizedQuery.market = MARKET_DB_MAP[normalizedQuery.market];
+      }
+
       // newsFilterSchema extends paginationSchema with news-specific filters.
       // safeParse returns { success, data } or { success: false, error }.
-      const parsed = newsFilterSchema.safeParse(req.query);
+      const parsed = newsFilterSchema.safeParse(normalizedQuery);
 
       if (!parsed.success) {
         res.status(400).json({
@@ -147,9 +183,10 @@ newsRouter.get(
       // expression is used as the WHERE clause to keep the query structure
       // consistent across both code paths.
       //
-      // NOTE: The newsFilterSchema.marketSchema already validates against
-      // lowercase DB enum values (us_stock, indian_equity, crypto, social),
-      // so no uppercase-to-lowercase mapping is required.
+      // NOTE: Uppercase market values (US, INDIA, CRYPTO, SOCIAL) are
+      // pre-normalized to lowercase DB enum values in Step 1 above via
+      // MARKET_DB_MAP, so the validated `market` value is always a
+      // lowercase DB enum string at this point.
       const conditions: SQL[] = [];
 
       if (market !== undefined) {
