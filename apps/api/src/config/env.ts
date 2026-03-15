@@ -90,9 +90,28 @@ export const envSchema = z.object({
   /**
    * Telegram Bot API token from @BotFather.
    * Format: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
-   * REQUIRED — no default.
+   *
+   * OPTIONAL — When omitted, the Telegram bot is disabled and the Express
+   * REST API operates independently. Trade alerts will not be delivered via
+   * Telegram, but the web dashboard, queue processing, and AI pipeline
+   * continue to function normally.
+   *
+   * @see Review Finding — Decouples API-only deployment from Telegram bot availability
    */
-  TELEGRAM_BOT_TOKEN: z.string().min(1),
+  TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+
+  /**
+   * Password for Basic Authentication on the Bull Board queue management
+   * dashboard at `/admin/queues`.
+   *
+   * OPTIONAL — When set, the dashboard requires HTTP Basic Auth with
+   * username `admin` and this password. When unset in development, the
+   * dashboard is accessible without authentication. When unset in production,
+   * the dashboard is NOT mounted (security by default).
+   *
+   * @see Review Finding — Bull Board exposed without access control
+   */
+  BULL_BOARD_PASSWORD: z.string().min(1).optional(),
 
   // ---------------------------------------------------------------------------
   // External API Keys

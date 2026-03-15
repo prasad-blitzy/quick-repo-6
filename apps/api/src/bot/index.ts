@@ -59,12 +59,13 @@ const logger = createLogger("telegram-bot");
 // ---------------------------------------------------------------------------
 
 /**
- * The grammY Bot instance initialized with the validated Telegram Bot API token.
+ * The grammY Bot instance initialized with the validated Telegram Bot API token,
+ * or `null` when `TELEGRAM_BOT_TOKEN` is not configured.
  *
- * This instance is the central communication point with the Telegram Bot API.
- * It is exported as a named export for use by:
+ * When the token is present, this instance is the central communication point
+ * with the Telegram Bot API. It is exported as a named export for use by:
  *
- *  - **`apps/api/src/index.ts`** — Calls `bot.stop()` during graceful shutdown
+ *  - **`apps/api/src/index.ts`** — Calls `stopBot()` during graceful shutdown
  *    to cleanly terminate the long polling loop and allow in-progress handlers
  *    to complete.
  *
@@ -72,93 +73,93 @@ const logger = createLogger("telegram-bot");
  *    `bot.api.sendMessage(chatId, text, options)` to deliver MarkdownV2-formatted
  *    trade alert notifications to subscribed Telegram users.
  *
+ * When the token is absent (`null`), all bot functionality is gracefully
+ * disabled — the REST API, queue processing, and AI pipeline continue
+ * operating independently. This decouples API-only deployments from Telegram
+ * bot availability.
+ *
  * The token is sourced from `env.TELEGRAM_BOT_TOKEN`, which is validated at
- * startup by the Zod schema in `apps/api/src/config/env.ts` (required,
- * `z.string().min(1)`).
+ * startup by the Zod schema in `apps/api/src/config/env.ts` (optional,
+ * `z.string().min(1).optional()`).
  */
-export const bot = new Bot(env.TELEGRAM_BOT_TOKEN);
+export const bot: Bot | null = env.TELEGRAM_BOT_TOKEN
+  ? new Bot(env.TELEGRAM_BOT_TOKEN)
+  : null;
 
 // ---------------------------------------------------------------------------
-// Global Error Handler — Registered FIRST (before any command handlers)
+// Handler Registration — Only when bot is initialized (token present)
 // ---------------------------------------------------------------------------
+// All command handlers, callback query handlers, and the global error boundary
+// are registered only when the bot instance exists. When TELEGRAM_BOT_TOKEN is
+// not set, no handlers are registered and no Telegram interactions occur.
 
-/**
- * grammY's global error boundary.
- *
- * Intercepts all unhandled errors thrown by middleware (command handlers,
- * callback query handlers, etc.) and logs them structurally using Pino.
- * The handler does NOT re-throw — errors are gracefully consumed to keep
- * the bot's long polling loop alive.
- *
- * The `BotError` parameter provides:
- *  - `err.ctx` — The grammY Context that triggered the error, giving access
- *    to `ctx.update.update_id` for correlating the error with a specific
- *    Telegram update.
- *  - `err.error` — The original thrown value (typed as `unknown`). Uses
- *    `instanceof Error` type guard per AAP Rule 0.7.1 (no `any` types).
- *
- * @see {@link https://grammy.dev/guide/errors} grammY error handling docs
- */
-bot.catch((err) => {
-  const ctx = err.ctx;
-  const error = err.error;
-  logger.error(
-    {
-      update_id: ctx.update.update_id,
-      error: error instanceof Error ? error.message : String(error),
-    },
-    "Bot error occurred",
-  );
-});
+if (bot) {
+  /**
+   * grammY's global error boundary.
+   * Intercepts all unhandled errors thrown by middleware and logs them
+   * structurally using Pino without re-throwing, keeping the bot alive.
+   */
+  bot.catch((err) => {
+    const ctx = err.ctx;
+    const error = err.error;
+    logger.error(
+      {
+        update_id: ctx.update.update_id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Bot error occurred",
+    );
+  });
 
-// ---------------------------------------------------------------------------
-// Command Handler Registration — Ordered by user interaction frequency
-// ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Command Handler Registration — Ordered by user interaction frequency
+  // -------------------------------------------------------------------------
 
-/**
- * `/start` — User registration command.
- * Creates a new subscriber in the `user_settings` database table with default
- * notification preferences (all markets, 70% confidence, all timeframes).
- * Idempotent — re-running `/start` is safe (ON CONFLICT DO NOTHING).
- */
-bot.command("start", handleStart);
+  /**
+   * `/start` — User registration command.
+   * Creates a new subscriber in the `user_settings` database table with default
+   * notification preferences (all markets, 70% confidence, all timeframes).
+   * Idempotent — re-running `/start` is safe (ON CONFLICT DO NOTHING).
+   */
+  bot.command("start", handleStart);
 
-/**
- * `/settings` — Preference configuration command.
- * Displays the user's current notification preferences and presents an inline
- * keyboard for interactive configuration of markets, timeframes, and confidence
- * threshold.
- */
-bot.command("settings", handleSettings);
+  /**
+   * `/settings` — Preference configuration command.
+   * Displays the user's current notification preferences and presents an inline
+   * keyboard for interactive configuration of markets, timeframes, and confidence
+   * threshold.
+   */
+  bot.command("settings", handleSettings);
 
-/**
- * `/status` — System health summary command.
- * Queries BullMQ queue job counts and API source health from the database,
- * then sends a MarkdownV2-formatted status report with emoji indicators
- * (🟢 healthy, 🟡 warning, 🔴 down).
- */
-bot.command("status", handleStatus);
+  /**
+   * `/status` — System health summary command.
+   * Queries BullMQ queue job counts and API source health from the database,
+   * then sends a MarkdownV2-formatted status report with emoji indicators
+   * (🟢 healthy, 🟡 warning, 🔴 down).
+   */
+  bot.command("status", handleStatus);
 
-// ---------------------------------------------------------------------------
-// Callback Query Handler — Inline keyboard button presses
-// ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Callback Query Handler — Inline keyboard button presses
+  // -------------------------------------------------------------------------
 
-/**
- * Handles ALL inline keyboard callback queries with a data payload.
- *
- * The `"callback_query:data"` filter string matches Telegram callback queries
- * that carry a data field (i.e., button presses from inline keyboards). The
- * handler in `./callbacks.js` parses the callback data prefix and routes to
- * the appropriate sub-handler:
- *  - `market:<id>` → Toggle market preference
- *  - `timeframe:<id>` → Toggle timeframe preference
- *  - `confidence:<val>` → Set confidence threshold
- *  - `settings:markets` → Navigate to market sub-keyboard
- *  - `settings:timeframes` → Navigate to timeframe sub-keyboard
- *  - `settings:confidence` → Navigate to confidence sub-keyboard
- *  - `settings:back` → Navigate back to main settings menu
- */
-bot.on("callback_query:data", handleCallbackQuery);
+  /**
+   * Handles ALL inline keyboard callback queries with a data payload.
+   *
+   * The `"callback_query:data"` filter string matches Telegram callback queries
+   * that carry a data field (i.e., button presses from inline keyboards). The
+   * handler in `./callbacks.js` parses the callback data prefix and routes to
+   * the appropriate sub-handler:
+   *  - `market:<id>` → Toggle market preference
+   *  - `timeframe:<id>` → Toggle timeframe preference
+   *  - `confidence:<val>` → Set confidence threshold
+   *  - `settings:markets` → Navigate to market sub-keyboard
+   *  - `settings:timeframes` → Navigate to timeframe sub-keyboard
+   *  - `settings:confidence` → Navigate to confidence sub-keyboard
+   *  - `settings:back` → Navigate back to main settings menu
+   */
+  bot.on("callback_query:data", handleCallbackQuery);
+}
 
 // ---------------------------------------------------------------------------
 // Bot Startup Function — Exported for application bootstrap
@@ -192,6 +193,18 @@ bot.on("callback_query:data", handleCallbackQuery);
  *          running in the background.
  */
 export async function startBot(): Promise<void> {
+  // -------------------------------------------------------------------------
+  // Guard: Skip bot startup when TELEGRAM_BOT_TOKEN is not configured.
+  // This allows the REST API to operate independently of the Telegram bot.
+  // -------------------------------------------------------------------------
+  if (!bot) {
+    logger.warn(
+      "TELEGRAM_BOT_TOKEN not set — Telegram bot disabled. " +
+        "REST API, queues, and AI pipeline will operate without Telegram notifications.",
+    );
+    return;
+  }
+
   logger.info("Starting Telegram bot in long polling mode...");
 
   // -------------------------------------------------------------------------
@@ -241,4 +254,21 @@ export async function startBot(): Promise<void> {
         "Bot long polling encountered a fatal error",
       );
     });
+}
+
+// ---------------------------------------------------------------------------
+// Bot Stop Function — Exported for graceful shutdown
+// ---------------------------------------------------------------------------
+
+/**
+ * Stops the Telegram bot's long polling loop gracefully.
+ *
+ * When the bot is not initialized (token absent), this function is a no-op.
+ * Called by `apps/api/src/index.ts` during the graceful shutdown sequence
+ * (SIGTERM / SIGINT handlers).
+ */
+export function stopBot(): void {
+  if (bot) {
+    bot.stop();
+  }
 }

@@ -34,7 +34,7 @@
  * @module apps/api/src/index
  */
 
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import helmet from "helmet";
 
 import { env } from "./config/env.js";
@@ -44,7 +44,7 @@ import { requestLogger } from "./middleware/request-logger.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { apiRouter } from "./routes/index.js";
 import { initQueues, closeQueues } from "./queues/index.js";
-import { bot, startBot } from "./bot/index.js";
+import { startBot, stopBot } from "./bot/index.js";
 import { closeDatabase } from "./db/index.js";
 
 // ---------------------------------------------------------------------------
@@ -128,9 +128,13 @@ app.use(apiRouter);
  * `initQueues()` returns the array of all 3 BullMQ Queue instances which
  * are wrapped in `BullMQAdapter` for the Bull Board dashboard.
  *
- * The dashboard is mounted at `/admin/queues` — accessible in development
- * for debugging queue health, job counts, and failed jobs. In production,
- * consider adding authentication middleware before the Bull Board route.
+ * Security policy (per code review finding):
+ *  - When `BULL_BOARD_PASSWORD` is set: Dashboard requires HTTP Basic Auth
+ *    with username `admin` and the configured password.
+ *  - When `BULL_BOARD_PASSWORD` is NOT set in production: Dashboard is NOT
+ *    mounted — security by default. A warning is logged.
+ *  - When `BULL_BOARD_PASSWORD` is NOT set in development/test: Dashboard
+ *    is mounted without auth for developer convenience.
  */
 const queues = initQueues();
 
@@ -142,7 +146,47 @@ createBullBoard({
   serverAdapter,
 });
 
-app.use("/admin/queues", serverAdapter.getRouter());
+if (env.BULL_BOARD_PASSWORD) {
+  // Authenticated access — HTTP Basic Auth middleware protects the dashboard.
+  // Username is always "admin"; password is from BULL_BOARD_PASSWORD env var.
+  const bullBoardAuth = (req: Request, res: Response, next: NextFunction): void => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Basic ")) {
+      res.set("WWW-Authenticate", 'Basic realm="Bull Board"');
+      res.status(401).send("Authentication required");
+      return;
+    }
+
+    const credentials = Buffer.from(authHeader.slice(6), "base64").toString();
+    const separatorIndex = credentials.indexOf(":");
+    const username = credentials.slice(0, separatorIndex);
+    const password = credentials.slice(separatorIndex + 1);
+
+    if (username === "admin" && password === env.BULL_BOARD_PASSWORD) {
+      next();
+    } else {
+      res.set("WWW-Authenticate", 'Basic realm="Bull Board"');
+      res.status(401).send("Invalid credentials");
+    }
+  };
+
+  app.use("/admin/queues", bullBoardAuth, serverAdapter.getRouter());
+  logger.info("Bull Board dashboard mounted at /admin/queues (Basic Auth protected)");
+} else if (env.NODE_ENV === "production") {
+  // Production without password — do NOT mount for security by default.
+  logger.warn(
+    "BULL_BOARD_PASSWORD not set in production — Bull Board dashboard disabled. " +
+      "Set BULL_BOARD_PASSWORD to enable the queue management dashboard.",
+  );
+} else {
+  // Development/test without password — mount without auth for convenience.
+  app.use("/admin/queues", serverAdapter.getRouter());
+  logger.info(
+    "Bull Board dashboard mounted at /admin/queues (no auth — development mode). " +
+      "Set BULL_BOARD_PASSWORD to enable Basic Auth protection.",
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Error Handler — MUST be LAST middleware (Express 4-arg error handler)
@@ -221,8 +265,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 
   try {
-    // Step 2: Stop the Telegram bot long polling loop
-    bot.stop();
+    // Step 2: Stop the Telegram bot long polling loop (no-op if bot is disabled)
+    stopBot();
     logger.info("Telegram bot stopped");
   } catch (error: unknown) {
     logger.error(

@@ -116,6 +116,18 @@ async function processNotificationJob(
   );
 
   // -------------------------------------------------------------------------
+  // Guard: Skip notification delivery when Telegram bot is not configured.
+  // This allows the analysis pipeline to function without Telegram.
+  // -------------------------------------------------------------------------
+  if (!bot) {
+    logger.warn(
+      { jobId: job.id, opportunityId },
+      "Telegram bot not configured (TELEGRAM_BOT_TOKEN not set) — skipping notification delivery",
+    );
+    return;
+  }
+
+  // -------------------------------------------------------------------------
   // Step 1: Find matching subscribers using the notifier service
   // -------------------------------------------------------------------------
   // findMatchingSubscribers:
