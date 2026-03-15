@@ -288,7 +288,7 @@ const SmartMoneyIndicator: FunctionComponent<SmartMoneyIndicatorProps> = ({
 
       {/* Price Context — shows current price and last update time */}
       {price > 0 && (
-        <div class="wallet-row" style={{ borderBottom: 'none' }}>
+        <div class="wallet-row wallet-row--no-border">
           <span class="wallet-entry">
             {formatPrice(price)}
           </span>
@@ -303,8 +303,7 @@ const SmartMoneyIndicator: FunctionComponent<SmartMoneyIndicatorProps> = ({
       {/* Classification Summary — shows emoji badges for known types */}
       {smartMoneyCount > 0 && (
         <div
-          class="wallet-row"
-          style={{ borderBottom: 'none', flexWrap: 'wrap' }}
+          class="wallet-row wallet-row--no-border wallet-row--wrap"
           role="group"
           aria-label="Wallet classification summary"
         >
@@ -334,21 +333,7 @@ const SmartMoneyIndicator: FunctionComponent<SmartMoneyIndicatorProps> = ({
       {walletAddresses.length > 0 && (
         <div class="sm-wallet-section">
           <button
-            class="wallet-row"
-            style={{
-              cursor: 'pointer',
-              background: 'transparent',
-              border: 'none',
-              color: 'inherit',
-              font: 'inherit',
-              padding: '4px 0',
-              width: '100%',
-              textAlign: 'left',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '12px',
-            }}
+            class="sm-expand-btn"
             onClick={() => setExpanded(!expanded)}
             aria-expanded={expanded}
             aria-controls="sm-wallet-list"

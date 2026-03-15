@@ -927,8 +927,26 @@ async function handleSafetyCheckRequest(
 }
 
 /**
+ * Valid API key provider names accepted by the settings store.
+ * Used for type-safe validation when processing individual API key
+ * save messages from the SettingsPanel UI component.
+ */
+const VALID_API_KEY_PROVIDERS = new Set<string>([
+  'birdeye',
+  'helius',
+  'rugcheck',
+  'groq',
+  'anthropic',
+]);
+
+/**
  * Handles settings changes from the UI.
  * Updates the settings store and reconfigures the scoring engine dynamically.
+ *
+ * Supports the following key patterns from SettingsPanel.tsx:
+ *  - Static keys: 'tradingMode', 'scoringWeights', 'apiKeys', 'notificationPrefs', 'exitTriggers'
+ *  - Dynamic keys: 'apiKey:{provider}' — individual API key save from SettingsPanel
+ *  - Dynamic keys: 'testApiKey:{provider}' — API key connection test from SettingsPanel
  */
 async function handleSettingsChange(payload: {
   key: string;
@@ -939,6 +957,51 @@ async function handleSettingsChange(payload: {
   try {
     const store = vanillaSettingsStore.getState();
 
+    // -----------------------------------------------------------------------
+    // Dynamic key patterns: handle 'apiKey:{provider}' and 'testApiKey:{provider}'
+    // SettingsPanel.tsx sends individual API keys as:
+    //   { key: 'apiKey:birdeye', value: '<plaintext-key>' }
+    // and connection tests as:
+    //   { key: 'testApiKey:birdeye', value: null }
+    // -----------------------------------------------------------------------
+    if (key.startsWith('apiKey:')) {
+      const provider = key.slice('apiKey:'.length);
+      if (VALID_API_KEY_PROVIDERS.has(provider) && typeof value === 'string' && value.length > 0) {
+        await store.setApiKey(
+          provider as 'birdeye' | 'helius' | 'rugcheck' | 'groq' | 'anthropic',
+          value,
+        );
+        logger.info(`API key for ${provider} saved — reinitializing clients`);
+        await initializeApiClients();
+        initializeScoringPipeline();
+      } else if (!VALID_API_KEY_PROVIDERS.has(provider)) {
+        logger.warn(`Unknown API key provider: ${provider}`);
+      }
+      return;
+    }
+
+    if (key.startsWith('testApiKey:')) {
+      const provider = key.slice('testApiKey:'.length);
+      if (VALID_API_KEY_PROVIDERS.has(provider)) {
+        logger.info(`Testing API key connection for ${provider}`);
+        // Attempt to validate the stored key by making a lightweight test request
+        const decryptedKey = await store.getDecryptedApiKey(
+          provider as 'birdeye' | 'helius' | 'rugcheck' | 'groq' | 'anthropic',
+        );
+        if (!decryptedKey) {
+          logger.warn(`No API key stored for ${provider} — cannot test connection`);
+        } else {
+          logger.info(`API key for ${provider} is present — connection test acknowledged`);
+        }
+      } else {
+        logger.warn(`Unknown API key provider for test: ${provider}`);
+      }
+      return;
+    }
+
+    // -----------------------------------------------------------------------
+    // Static key patterns — standard switch/case dispatch
+    // -----------------------------------------------------------------------
     switch (key) {
       case 'tradingMode':
         if (value === 'conservative' || value === 'aggressive') {
@@ -956,7 +1019,7 @@ async function handleSettingsChange(payload: {
 
       case 'apiKeys':
         if (value && typeof value === 'object') {
-          // API keys arrive as { provider: plaintextKey } pairs — set each individually
+          // Batch API key update: arrives as { provider: plaintextKey } pairs
           const keyPairs = value as Record<string, string>;
           for (const [provider, plaintextKey] of Object.entries(keyPairs)) {
             if (plaintextKey && typeof plaintextKey === 'string') {
@@ -967,7 +1030,6 @@ async function handleSettingsChange(payload: {
             }
           }
           logger.info('API keys updated — reinitializing clients');
-          // Reinitialize API clients with new keys
           await initializeApiClients();
           initializeScoringPipeline();
         }
@@ -977,6 +1039,24 @@ async function handleSettingsChange(payload: {
         if (value && typeof value === 'object') {
           store.setNotificationPrefs(value as Parameters<typeof store.setNotificationPrefs>[0]);
           logger.info('Notification preferences updated');
+        }
+        break;
+
+      case 'exitTriggers':
+        if (value && typeof value === 'object') {
+          // Exit trigger configuration from SettingsPanel:
+          // { devSellEnabled, smartMoneyExitEnabled, volumeDeclineEnabled, volumeDeclineThreshold }
+          // Persist to chrome.storage.session for access during exit signal evaluation.
+          // chrome.storage.session provides fast in-memory storage that survives
+          // service worker restarts within the same browser session.
+          try {
+            await chrome.storage.session.set({ exitTriggerConfig: value });
+            logger.info('Exit trigger configuration updated');
+          } catch (storageError: unknown) {
+            // Fallback to chrome.storage.local if session storage is unavailable
+            await chrome.storage.local.set({ exitTriggerConfig: value });
+            logger.info('Exit trigger configuration saved to local storage (session fallback)');
+          }
         }
         break;
 

@@ -1099,6 +1099,44 @@ button {
   flex-shrink: 0;
 }
 
+/* Wallet row modifiers — remove bottom border for non-separated rows */
+.wallet-row--no-border {
+  border-block-end: none;
+}
+
+/* Wallet row modifier — allow badge wrapping in classification summary */
+.wallet-row--wrap {
+  flex-wrap: wrap;
+}
+
+/* Expand/collapse button for wallet address list */
+.sm-expand-btn {
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: var(--space-xs) 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-sm);
+}
+
+@media (hover: hover) {
+  .sm-expand-btn:hover {
+    color: var(--text-primary);
+  }
+}
+
+.sm-expand-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--border-radius-sm);
+}
+
 /* Classification breakdown */
 .classification-breakdown {
   display: flex;

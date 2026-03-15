@@ -23,7 +23,8 @@
  *   - 5 API key input fields (Birdeye, Helius, RugCheck, Groq, Anthropic)
  *     with show/hide toggles, save buttons, and connection test buttons
  *   - Conservative / Aggressive trading mode toggle with score thresholds
- *   - 7 scoring weight sliders with auto-normalize and reset to defaults
+ *   - 7 scoring weight sliders with balance warning and reset to defaults
+ *     (weight normalization is deferred to scoring-engine.ts::normalizeWeights())
  *   - TP/SL profile editor (ladder, day-trade, swing-trade) with custom edit
  *   - Hard exit trigger toggles (dev sell, smart money exit, volume decline)
  *   - Notification preference toggles
@@ -916,7 +917,9 @@ const SettingsPanel: FunctionComponent = () => {
     WEIGHT_DEBOUNCE_MS,
   );
 
-  /** Handle individual weight slider change with auto-normalize */
+  /** Handle individual weight slider change — updates local state and debounces store write.
+   *  Note: Weight normalization to sum 1.0 is deferred to scoring-engine.ts::normalizeWeights(),
+   *  not performed in the UI. The UI displays a balance warning when weights deviate from 1.0. */
   const handleWeightChange = useCallback(
     (factorKey: keyof ScoringWeights, value: number) => {
       setLocalWeights((prev) => {
