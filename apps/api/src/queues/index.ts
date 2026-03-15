@@ -102,6 +102,42 @@ const logger = createLogger("queues");
 export function initQueues(): Queue[] {
   logger.info("Initializing BullMQ queues...");
 
+  // ---------------------------------------------------------------------------
+  // CRITICAL: Attach error event handlers to EVERY BullMQ Queue instance.
+  //
+  // BullMQ Queue extends EventEmitter. When a Queue encounters a Redis
+  // connection error (ECONNREFUSED, ENOTFOUND, etc.), it emits an 'error'
+  // event. If no listener is attached, Node.js treats unhandled 'error'
+  // events as uncaught exceptions, which crashes the process via the
+  // uncaughtException handler in index.ts (→ gracefulShutdown → process.exit).
+  //
+  // By attaching error handlers here, Redis connection failures are logged
+  // but do NOT crash the Express server. ioredis automatically reconnects
+  // when Redis becomes available again — the server remains responsive
+  // throughout the Redis outage, and the health endpoint correctly reports
+  // degraded status.
+  // ---------------------------------------------------------------------------
+  newsPollingQueue.on("error", (error: Error) => {
+    logger.error(
+      { error: error.message, queue: "news-polling" },
+      "News polling queue error — Redis may be unavailable",
+    );
+  });
+
+  analysisQueue.on("error", (error: Error) => {
+    logger.error(
+      { error: error.message, queue: "analysis" },
+      "Analysis queue error — Redis may be unavailable",
+    );
+  });
+
+  notificationsQueue.on("error", (error: Error) => {
+    logger.error(
+      { error: error.message, queue: "notifications" },
+      "Notifications queue error — Redis may be unavailable",
+    );
+  });
+
   // Register the repeatable 5-minute cron job for news polling.
   // This is async but handled as fire-and-forget: errors are caught and
   // logged without blocking synchronous queue initialization. The cron

@@ -327,6 +327,19 @@ export type NewsFilterParams = z.infer<typeof newsFilterSchema>;
  * ```
  */
 export const opportunitiesFilterSchema = paginationSchema.extend({
+  /**
+   * Column to sort opportunities by — overrides the generic `sortBy` from
+   * paginationSchema with a strict enum to reject arbitrary column names.
+   *
+   * Supported values:
+   *  - `'createdAt'` (default) — Sort by opportunity creation timestamp
+   *  - `'confidence'` — Sort by AI confidence score (numeric(3,2))
+   *
+   * Invalid values (e.g., `'DROP_TABLE'`, `'invalid_field'`) now return
+   * HTTP 400 with a VALIDATION_ERROR instead of silently falling back to
+   * the default sort column.
+   */
+  sortBy: z.enum(["createdAt", "confidence"]).optional(),
   /** Filter by market segment — optional */
   market: marketSchema.optional(),
   /** Filter by trade direction (LONG/SHORT) — optional */

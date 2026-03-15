@@ -158,15 +158,43 @@ healthRouter.get(
       // -------------------------------------------------------------------
       // Check 2: Redis Connectivity
       // -------------------------------------------------------------------
-      // Sends a PING command to the ioredis connection shared by all BullMQ
-      // queues. A successful PONG response confirms Redis is reachable.
+      // First checks the ioredis connection status property to avoid calling
+      // `connection.ping()` on a disconnected/reconnecting client. With
+      // `maxRetriesPerRequest: null` (required by BullMQ), ioredis queues
+      // commands indefinitely when disconnected — a ping() call would hang
+      // and never resolve, making the health endpoint unresponsive.
+      //
+      // Status values from ioredis:
+      //   "ready"        — Connected and ready for commands
+      //   "connect"      — TCP connection established, awaiting ready
+      //   "reconnecting" — Lost connection, attempting to reconnect
+      //   "connecting"   — Initial connection in progress
+      //   "close"        — Connection closed (quit() called)
+      //   "end"          — Connection destroyed (disconnect() called)
+      //   "wait"         — Waiting (lazyConnect mode, not applicable here)
+      //
+      // Only attempt PING when status is "ready" — all other states indicate
+      // the connection is not usable for commands.
       try {
-        const redisStart = Date.now();
-        await connection.ping();
-        checks.redis = {
-          status: "up",
-          latencyMs: Date.now() - redisStart,
-        };
+        const redisStatus = connection.status;
+
+        if (redisStatus !== "ready") {
+          checks.redis = {
+            status: "down",
+            error: `Redis connection not ready (status: ${redisStatus})`,
+          };
+          logger.warn(
+            { redisStatus },
+            "Redis health check: connection not in ready state",
+          );
+        } else {
+          const redisStart = Date.now();
+          await connection.ping();
+          checks.redis = {
+            status: "up",
+            latencyMs: Date.now() - redisStart,
+          };
+        }
       } catch (error: unknown) {
         const message =
           error instanceof Error ? error.message : "Unknown Redis error";
