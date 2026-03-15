@@ -34,15 +34,33 @@ export default defineConfig({
    * behavior changes in a future release.
    */
   vite: () => ({
-    plugins: [preact()],
+    plugins: [
+      preact(),
+      /**
+       * WXT's internal tsconfigPaths plugin (a regular-priority Vite plugin) always
+       * overrides the '@' alias with the WXT srcDir value.  With srcDir: '.' the
+       * override maps '@' to the project root instead of './src/', breaking every
+       * '@/...' import.
+       *
+       * By using enforce: 'post' this plugin's config() hook runs AFTER WXT's
+       * tsconfigPaths plugin, so the correct '@' → './src/' alias wins the merge.
+       */
+      {
+        name: 'src-alias-override',
+        enforce: 'post' as const,
+        config() {
+          return {
+            resolve: {
+              alias: {
+                '@': resolve(__dirname, 'src'),
+              },
+            },
+          };
+        },
+      },
+    ],
     resolve: {
       alias: {
-        /**
-         * Map '@/' imports to the src/ directory with an absolute path.
-         * Vite resolve.alias requires absolute paths for directory-based aliases.
-         * __dirname is provided by WXT's config loader (jiti/c12) at runtime.
-         */
-        '@': resolve(__dirname, 'src'),
         /**
          * React compatibility aliases — route React imports through preact/compat.
          * These enable React-dependent libraries like Zustand hooks to work with Preact.
