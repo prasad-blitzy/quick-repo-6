@@ -47,6 +47,17 @@ import { errorHandler } from "../../src/middleware/error-handler.js";
 // ---------------------------------------------------------------------------
 
 /**
+ * Standard ApiResponse envelope used by all route handlers.
+ * Routes wrap their payloads in `{ success: true, data: T }`.
+ * The frontend `useApi` hook unwraps this automatically, but Supertest
+ * tests receive the raw JSON body — assertions must account for this.
+ */
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+/**
  * Pagination metadata shape returned by paginated endpoints.
  * Used for type-safe assertions without using `any`.
  */
@@ -59,6 +70,7 @@ interface PaginationMeta {
 
 /**
  * Generic paginated response shape for news and opportunities endpoints.
+ * This shape is INSIDE the ApiEnvelope — i.e., the `T` in `ApiEnvelope<T>`.
  */
 interface PaginatedResponse<T> {
   data: T[];
@@ -87,11 +99,16 @@ interface NewsArticleResponse {
 }
 
 /**
- * Trade opportunity shape nested inside the opportunities response.
+ * Trade opportunity fields returned by the opportunities route.
  * All numeric fields (entryPrice, stopLoss, takeProfit, confidence)
  * are strings from PostgreSQL numeric type.
+ *
+ * The route flattens the Drizzle LEFT JOIN result by spreading
+ * `...row.opportunity` and adding `article` as a nested property.
+ * This produces a flat shape with an `article` sub-object, rather
+ * than the raw `{ opportunity, article }` Drizzle result.
  */
-interface OpportunityRow {
+interface FlatOpportunityItem {
   id: string;
   articleId: string;
   symbol: string;
@@ -108,6 +125,7 @@ interface OpportunityRow {
   createdAt: string;
   updatedAt: string;
   expiresAt: string | null;
+  article: ArticleContext | null;
 }
 
 /**
@@ -121,35 +139,52 @@ interface ArticleContext {
 }
 
 /**
- * Individual item in the opportunities response data array.
- * Matches the Drizzle select shape: { opportunity, article }.
+ * Performance summary shape as nested inside the route response.
+ * The performance route wraps aggregate data in `data.summary`.
+ * Field names match the route implementation: `wins`, `losses`,
+ * `averagePnl`, `averageHoldTime`.
+ *
+ * P&L fields are strings to preserve PostgreSQL numeric precision.
  */
-interface OpportunityItem {
-  opportunity: OpportunityRow;
-  article: ArticleContext | null;
+interface PerformanceSummary {
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalPnl: string;
+  averagePnl: string;
+  bestTrade: string;
+  worstTrade: string;
+  averageHoldTime: string;
 }
 
 /**
- * Performance aggregate response shape.
- * P&L fields are strings to preserve PostgreSQL numeric precision.
+ * Full performance response payload inside the ApiEnvelope.
+ * Contains summary aggregations, chart data, market breakdown,
+ * and recent trades arrays.
  */
-interface PerformanceData {
-  totalTrades: number;
-  winners: number;
-  losers: number;
-  winRate: number;
-  totalPnl: string;
-  avgPnl: string;
-  bestTrade: string;
-  worstTrade: string;
-  avgPnlPercentage: string;
+interface PerformancePayload {
+  summary: PerformanceSummary;
+  chartData: unknown[];
+  marketBreakdown: unknown[];
+  recentTrades: unknown[];
 }
 
 /**
  * Health check response shape from GET /api/health.
+ * The health route includes `status` at the top level alongside
+ * the ApiEnvelope fields (`success`, `data`), plus `checks`,
+ * `uptime`, and `timestamp` for backward compatibility.
  */
 interface HealthResponse {
+  success: boolean;
   status: string;
+  data: {
+    status: string;
+    postgres: boolean;
+    redis: boolean;
+    lastChecked: string;
+  };
   checks: {
     database: { status: string; latencyMs?: number; error?: string };
     redis: { status: string; latencyMs?: number; error?: string };
@@ -157,6 +192,19 @@ interface HealthResponse {
   };
   uptime: number;
   timestamp: string;
+}
+
+/**
+ * Helper to unwrap the ApiEnvelope from a Supertest response body.
+ * All route handlers wrap their payloads in `{ success: true, data: T }`.
+ * This helper extracts the inner `data` property for cleaner assertions.
+ *
+ * @param body - The raw `res.body` from Supertest
+ * @returns The inner payload `T` from the envelope
+ */
+function unwrap<T>(body: unknown): T {
+  const envelope = body as ApiEnvelope<T>;
+  return envelope.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +540,7 @@ describe("REST API Integration Tests", () => {
     it("should return paginated news articles with default parameters", async () => {
       const res = await request(app).get("/api/news").expect(200);
 
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       // Verify response envelope shape
       expect(body).toHaveProperty("data");
@@ -511,7 +559,7 @@ describe("REST API Integration Tests", () => {
 
     it("should filter news by market=US (maps to us_stock)", async () => {
       const res = await request(app).get("/api/news?market=US").expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const article of body.data) {
@@ -521,7 +569,7 @@ describe("REST API Integration Tests", () => {
 
     it("should filter news by market=INDIA (maps to indian_equity)", async () => {
       const res = await request(app).get("/api/news?market=INDIA").expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const article of body.data) {
@@ -531,7 +579,7 @@ describe("REST API Integration Tests", () => {
 
     it("should filter news by market=CRYPTO (maps to crypto)", async () => {
       const res = await request(app).get("/api/news?market=CRYPTO").expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const article of body.data) {
@@ -541,7 +589,7 @@ describe("REST API Integration Tests", () => {
 
     it("should filter news by source", async () => {
       const res = await request(app).get("/api/news?source=Finnhub").expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const article of body.data) {
@@ -553,7 +601,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?isAnalyzed=true")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       // We seeded 2 analyzed articles (Apple + Reliance)
       expect(body.data.length).toBe(2);
@@ -570,7 +618,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?isAnalyzed=false")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       // Because of the z.coerce.boolean() issue, "false" parses as true.
       // We expect 2 analyzed articles (Apple + Reliance).
@@ -584,7 +632,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?from=2026-03-13T00:00:00Z&to=2026-03-13T23:59:59Z")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       // Two articles are from 2026-03-13 (Apple at 10:00, Bitcoin at 11:00)
       expect(body.data.length).toBe(2);
@@ -605,7 +653,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?page=1&limit=1")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBeLessThanOrEqual(1);
       expect(body.pagination.limit).toBe(1);
@@ -617,7 +665,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?page=2&limit=1")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBe(1);
       expect(body.pagination.page).toBe(2);
@@ -627,7 +675,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?sortOrder=asc")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       if (body.data.length >= 2) {
         const first = body.data[0];
@@ -642,7 +690,7 @@ describe("REST API Integration Tests", () => {
 
     it("should default to sortOrder=desc (newest first)", async () => {
       const res = await request(app).get("/api/news").expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       if (body.data.length >= 2) {
         const first = body.data[0];
@@ -657,7 +705,7 @@ describe("REST API Integration Tests", () => {
 
     it("should return sentimentScore as string or null (numeric precision)", async () => {
       const res = await request(app).get("/api/news").expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       for (const article of body.data) {
         if (article.sentimentScore !== null) {
@@ -670,7 +718,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/news?market=SOCIAL")
         .expect(200);
-      const body = res.body as PaginatedResponse<NewsArticleResponse>;
+      const body = unwrap<PaginatedResponse<NewsArticleResponse>>(res.body);
 
       expect(body.data.length).toBe(0);
       expect(body.pagination.total).toBe(0);
@@ -690,7 +738,7 @@ describe("REST API Integration Tests", () => {
     it("should return paginated trade opportunities", async () => {
       const res = await request(app).get("/api/opportunities").expect(200);
 
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body).toHaveProperty("data");
       expect(body).toHaveProperty("pagination");
@@ -702,34 +750,33 @@ describe("REST API Integration Tests", () => {
       expect(body.pagination).toHaveProperty("totalPages");
     });
 
-    it("should return opportunities in nested { opportunity, article } shape", async () => {
+    it("should return opportunities in flat shape with article context", async () => {
       const res = await request(app).get("/api/opportunities").expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       const firstItem = body.data[0];
       expect(firstItem).toBeDefined();
       if (firstItem) {
-        // Verify the nested structure from LEFT JOIN
-        expect(firstItem).toHaveProperty("opportunity");
-        expect(firstItem).toHaveProperty("article");
+        // Verify the flat opportunity fields (spread from Drizzle row.opportunity)
+        expect(firstItem).toHaveProperty("id");
+        expect(firstItem).toHaveProperty("symbol");
+        expect(firstItem).toHaveProperty("market");
+        expect(firstItem).toHaveProperty("direction");
+        expect(firstItem).toHaveProperty("confidence");
+        expect(firstItem).toHaveProperty("entryPrice");
+        expect(firstItem).toHaveProperty("stopLoss");
+        expect(firstItem).toHaveProperty("takeProfit");
+        expect(firstItem).toHaveProperty("timeframe");
+        expect(firstItem).toHaveProperty("status");
 
-        // Verify opportunity fields
-        expect(firstItem.opportunity).toHaveProperty("id");
-        expect(firstItem.opportunity).toHaveProperty("symbol");
-        expect(firstItem.opportunity).toHaveProperty("market");
-        expect(firstItem.opportunity).toHaveProperty("direction");
-        expect(firstItem.opportunity).toHaveProperty("confidence");
-        expect(firstItem.opportunity).toHaveProperty("entryPrice");
-        expect(firstItem.opportunity).toHaveProperty("stopLoss");
-        expect(firstItem.opportunity).toHaveProperty("takeProfit");
-        expect(firstItem.opportunity).toHaveProperty("timeframe");
-        expect(firstItem.opportunity).toHaveProperty("status");
+        // Verify article is nested sub-object from LEFT JOIN
+        expect(firstItem).toHaveProperty("article");
       }
     });
 
     it("should include article context via LEFT JOIN", async () => {
       const res = await request(app).get("/api/opportunities").expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       const firstItem = body.data[0];
       expect(firstItem).toBeDefined();
@@ -745,11 +792,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?status=active")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.status).toBe("active");
+        expect(item.status).toBe("active");
       }
     });
 
@@ -757,11 +804,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?status=closed")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.status).toBe("closed");
+        expect(item.status).toBe("closed");
       }
     });
 
@@ -769,11 +816,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?market=US")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.market).toBe("us_stock");
+        expect(item.market).toBe("us_stock");
       }
     });
 
@@ -781,11 +828,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?direction=long")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.direction).toBe("long");
+        expect(item.direction).toBe("long");
       }
     });
 
@@ -793,11 +840,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?direction=short")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.direction).toBe("short");
+        expect(item.direction).toBe("short");
       }
     });
 
@@ -805,11 +852,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?timeframe=swing")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.timeframe).toBe("swing");
+        expect(item.timeframe).toBe("swing");
       }
     });
 
@@ -817,14 +864,12 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?minConfidence=0.80")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       // Only the 0.85-confidence opportunity should match
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(parseFloat(item.opportunity.confidence)).toBeGreaterThanOrEqual(
-          0.8,
-        );
+        expect(parseFloat(item.confidence)).toBeGreaterThanOrEqual(0.8);
       }
     });
 
@@ -832,11 +877,11 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?symbol=AAPL")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeGreaterThanOrEqual(1);
       for (const item of body.data) {
-        expect(item.opportunity.symbol).toBe("AAPL");
+        expect(item.symbol).toBe("AAPL");
       }
     });
 
@@ -844,16 +889,14 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?sortBy=confidence&sortOrder=desc")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       if (body.data.length >= 2) {
         const first = body.data[0];
         const second = body.data[1];
         if (first && second) {
-          expect(
-            parseFloat(first.opportunity.confidence),
-          ).toBeGreaterThanOrEqual(
-            parseFloat(second.opportunity.confidence),
+          expect(parseFloat(first.confidence)).toBeGreaterThanOrEqual(
+            parseFloat(second.confidence),
           );
         }
       }
@@ -863,16 +906,14 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?sortBy=confidence&sortOrder=asc")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       if (body.data.length >= 2) {
         const first = body.data[0];
         const second = body.data[1];
         if (first && second) {
-          expect(
-            parseFloat(first.opportunity.confidence),
-          ).toBeLessThanOrEqual(
-            parseFloat(second.opportunity.confidence),
+          expect(parseFloat(first.confidence)).toBeLessThanOrEqual(
+            parseFloat(second.confidence),
           );
         }
       }
@@ -880,16 +921,15 @@ describe("REST API Integration Tests", () => {
 
     it("should return prices as strings (numeric precision — AAP Rule 0.7.2)", async () => {
       const res = await request(app).get("/api/opportunities").expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       const firstItem = body.data[0];
       expect(firstItem).toBeDefined();
       if (firstItem) {
-        const opp = firstItem.opportunity;
-        expect(typeof opp.entryPrice).toBe("string");
-        expect(typeof opp.stopLoss).toBe("string");
-        expect(typeof opp.takeProfit).toBe("string");
-        expect(typeof opp.confidence).toBe("string");
+        expect(typeof firstItem.entryPrice).toBe("string");
+        expect(typeof firstItem.stopLoss).toBe("string");
+        expect(typeof firstItem.takeProfit).toBe("string");
+        expect(typeof firstItem.confidence).toBe("string");
       }
     });
 
@@ -897,7 +937,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?page=1&limit=1")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBeLessThanOrEqual(1);
       expect(body.pagination.limit).toBe(1);
@@ -908,7 +948,7 @@ describe("REST API Integration Tests", () => {
       const res = await request(app)
         .get("/api/opportunities?symbol=NONEXISTENT")
         .expect(200);
-      const body = res.body as PaginatedResponse<OpportunityItem>;
+      const body = unwrap<PaginatedResponse<FlatOpportunityItem>>(res.body);
 
       expect(body.data.length).toBe(0);
       expect(body.pagination.total).toBe(0);
@@ -928,51 +968,53 @@ describe("REST API Integration Tests", () => {
     it("should return performance aggregation data", async () => {
       const res = await request(app).get("/api/performance").expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
+      // The performance route wraps data in ApiEnvelope: { success, data: PerformancePayload }
+      // PerformancePayload = { summary, chartData, marketBreakdown, recentTrades }
+      const body = unwrap<PerformancePayload>(res.body);
 
-      expect(body).toHaveProperty("data");
-      expect(body).toHaveProperty("filters");
+      expect(body).toHaveProperty("summary");
+      expect(body).toHaveProperty("chartData");
 
-      const data = body.data;
-      expect(data).toHaveProperty("totalTrades");
-      expect(data).toHaveProperty("winners");
-      expect(data).toHaveProperty("losers");
-      expect(data).toHaveProperty("winRate");
-      expect(data).toHaveProperty("totalPnl");
-      expect(data).toHaveProperty("avgPnl");
+      const summary = body.summary;
+      expect(summary).toHaveProperty("totalTrades");
+      expect(summary).toHaveProperty("wins");
+      expect(summary).toHaveProperty("losses");
+      expect(summary).toHaveProperty("winRate");
+      expect(summary).toHaveProperty("totalPnl");
+      expect(summary).toHaveProperty("averagePnl");
     });
 
     it("should return P&L values as strings (numeric precision — AAP Rule 0.7.2)", async () => {
       const res = await request(app).get("/api/performance").expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      const data = body.data;
+      const body = unwrap<PerformancePayload>(res.body);
+      const summary = body.summary;
 
-      // totalPnl and avgPnl come from SQL aggregation — must be strings
-      if (data.totalPnl !== null) {
-        expect(typeof data.totalPnl).toBe("string");
+      // totalPnl and averagePnl come from SQL aggregation — must be strings
+      if (summary.totalPnl !== null) {
+        expect(typeof summary.totalPnl).toBe("string");
       }
-      if (data.avgPnl !== null) {
-        expect(typeof data.avgPnl).toBe("string");
+      if (summary.averagePnl !== null) {
+        expect(typeof summary.averagePnl).toBe("string");
       }
     });
 
     it("should return correct trade counts", async () => {
       const res = await request(app).get("/api/performance").expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      const data = body.data;
+      const body = unwrap<PerformancePayload>(res.body);
+      const summary = body.summary;
 
       // We seeded 1 performance record where isWinner=true
-      expect(data.totalTrades).toBeGreaterThanOrEqual(1);
-      expect(data.winners).toBeGreaterThanOrEqual(1);
+      expect(summary.totalTrades).toBeGreaterThanOrEqual(1);
+      expect(summary.wins).toBeGreaterThanOrEqual(1);
     });
 
     it("should return winRate as a number", async () => {
       const res = await request(app).get("/api/performance").expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(typeof body.data.winRate).toBe("number");
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(typeof body.summary.winRate).toBe("number");
     });
 
     it("should filter performance by date range (ISO 8601 datetime with offset)", async () => {
@@ -984,10 +1026,10 @@ describe("REST API Integration Tests", () => {
         )
         .expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(body.data).toHaveProperty("totalTrades");
-      expect(body.filters).toHaveProperty("startDate");
-      expect(body.filters).toHaveProperty("endDate");
+      // The performance route does NOT return a `filters` property.
+      // It returns PerformancePayload with summary data.
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(body.summary).toHaveProperty("totalTrades");
     });
 
     it("should filter performance by market (uppercase values)", async () => {
@@ -996,9 +1038,8 @@ describe("REST API Integration Tests", () => {
         .get("/api/performance?market=US")
         .expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(body.data).toHaveProperty("totalTrades");
-      expect(body.filters).toHaveProperty("market");
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(body.summary).toHaveProperty("totalTrades");
     });
 
     it("should support aggregation period parameter (daily)", async () => {
@@ -1006,9 +1047,8 @@ describe("REST API Integration Tests", () => {
         .get("/api/performance?aggregation=daily")
         .expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(body.data).toHaveProperty("totalTrades");
-      expect(body.filters).toHaveProperty("aggregation");
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(body.summary).toHaveProperty("totalTrades");
     });
 
     it("should support aggregation period parameter (weekly)", async () => {
@@ -1016,8 +1056,8 @@ describe("REST API Integration Tests", () => {
         .get("/api/performance?aggregation=weekly")
         .expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(body.data).toHaveProperty("totalTrades");
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(body.summary).toHaveProperty("totalTrades");
     });
 
     it("should support aggregation period parameter (monthly)", async () => {
@@ -1025,16 +1065,16 @@ describe("REST API Integration Tests", () => {
         .get("/api/performance?aggregation=monthly")
         .expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(body.data).toHaveProperty("totalTrades");
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(body.summary).toHaveProperty("totalTrades");
     });
 
     it("should include bestTrade and worstTrade in response", async () => {
       const res = await request(app).get("/api/performance").expect(200);
 
-      const body = res.body as { data: PerformanceData; filters: Record<string, unknown> };
-      expect(body.data).toHaveProperty("bestTrade");
-      expect(body.data).toHaveProperty("worstTrade");
+      const body = unwrap<PerformancePayload>(res.body);
+      expect(body.summary).toHaveProperty("bestTrade");
+      expect(body.summary).toHaveProperty("worstTrade");
     });
   });
 

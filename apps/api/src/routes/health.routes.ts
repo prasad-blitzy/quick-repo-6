@@ -274,6 +274,9 @@ healthRouter.get(
       // compatibility with any consumers that already use the raw shape.
       res.status(httpStatus).json({
         success: true,
+        // Top-level status for direct access by health check consumers
+        // and integration tests (e.g., body.status === "healthy").
+        status: overallStatus,
         data: {
           status: overallStatus,
           postgres: checks.database.status === "up",
