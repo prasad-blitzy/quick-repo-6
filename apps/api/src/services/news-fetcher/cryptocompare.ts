@@ -22,7 +22,7 @@
 import { createLogger } from "../../lib/logger.js";
 import { getCryptoCompareLimiter } from "../../lib/rate-limiter.js";
 import { env } from "../../config/env.js";
-import { API_BASE_URLS } from "../../config/constants.js";
+import { API_BASE_URLS, DEFAULTS } from "../../config/constants.js";
 import type { NormalizedArticle } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -186,9 +186,10 @@ export async function fetchCryptoCompareNews(): Promise<NormalizedArticle[]> {
 
     logger.debug({ url }, "Fetching CryptoCompare news");
 
-    // Step 4 — Execute rate-limited API request via Bottleneck scheduler
+    // Step 4 — Execute rate-limited API request via Bottleneck scheduler.
+    // AbortSignal.timeout prevents indefinite hangs on unresponsive API servers.
     const response = await limiter.schedule(() =>
-      fetch(url, { headers }).then((res) => {
+      fetch(url, { headers, signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) }).then((res) => {
         if (!res.ok) {
           throw new Error(
             `CryptoCompare API error: ${String(res.status)} ${res.statusText}`,

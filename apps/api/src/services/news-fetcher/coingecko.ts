@@ -35,7 +35,7 @@
 import { createLogger } from "../../lib/logger.js";
 import { getCoinGeckoLimiter } from "../../lib/rate-limiter.js";
 import { env } from "../../config/env.js";
-import { API_BASE_URLS } from "../../config/constants.js";
+import { API_BASE_URLS, DEFAULTS } from "../../config/constants.js";
 import type { NormalizedArticle } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ async function fetchTrendingCoins(): Promise<NormalizedArticle[]> {
   logger.info({ url }, "Fetching CoinGecko trending coins");
 
   const response = await limiter.schedule(() =>
-    fetch(url, { headers: buildHeaders() }),
+    fetch(url, { headers: buildHeaders(), signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) }),
   );
 
   if (!response.ok) {
@@ -270,7 +270,7 @@ async function fetchMarketMovers(): Promise<NormalizedArticle[]> {
   logger.info({ url }, "Fetching CoinGecko market data");
 
   const response = await limiter.schedule(() =>
-    fetch(url, { headers: buildHeaders() }),
+    fetch(url, { headers: buildHeaders(), signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) }),
   );
 
   if (!response.ok) {

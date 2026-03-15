@@ -28,7 +28,7 @@
 import { createLogger } from "../../lib/logger.js";
 import { getAlphaVantageLimiter } from "../../lib/rate-limiter.js";
 import { env } from "../../config/env.js";
-import { API_BASE_URLS } from "../../config/constants.js";
+import { API_BASE_URLS, DEFAULTS } from "../../config/constants.js";
 import type { NormalizedArticle } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -230,9 +230,10 @@ export async function fetchAlphaVantageNews(): Promise<NormalizedArticle[]> {
     logger.info("Fetching news from Alpha Vantage NEWS_SENTIMENT endpoint");
 
     // Step 3: Schedule the fetch through the dedicated rate limiter
-    // The limiter ensures we don't exceed 25 calls/day on the free tier
+    // The limiter ensures we don't exceed 25 calls/day on the free tier.
+    // AbortSignal.timeout prevents indefinite hangs on unresponsive API servers.
     const data: unknown = await limiter.schedule(() =>
-      fetch(url).then((res) => {
+      fetch(url, { signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) }).then((res) => {
         if (!res.ok) {
           throw new Error(
             `Alpha Vantage API error: HTTP ${String(res.status)} ${res.statusText}`,

@@ -23,7 +23,7 @@
 import { createLogger } from "../../lib/logger.js";
 import { getFinnhubLimiter } from "../../lib/rate-limiter.js";
 import { env } from "../../config/env.js";
-import { API_BASE_URLS } from "../../config/constants.js";
+import { API_BASE_URLS, DEFAULTS } from "../../config/constants.js";
 import type { NormalizedArticle } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -145,8 +145,9 @@ export async function fetchFinnhubNews(): Promise<NormalizedArticle[]> {
     // Schedule the HTTP request through the Bottleneck rate limiter to
     // respect the 60 calls/min free-tier limit. The limiter queues
     // requests automatically when the reservoir is depleted.
+    // AbortSignal.timeout prevents indefinite hangs on unresponsive API servers.
     const items = await limiter.schedule(async () => {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) });
       if (!res.ok) {
         throw new Error(`Finnhub API error: ${String(res.status)}`);
       }
@@ -254,8 +255,9 @@ export async function fetchFinnhubQuote(
     // Schedule the HTTP request through the shared Finnhub Bottleneck
     // rate limiter. Both news and quote requests share the same 60/min
     // rate limit on the Finnhub free tier.
+    // AbortSignal.timeout prevents indefinite hangs on unresponsive API servers.
     const quote = await limiter.schedule(async () => {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) });
       if (!res.ok) {
         throw new Error(
           `Finnhub quote API error: ${String(res.status)}`,

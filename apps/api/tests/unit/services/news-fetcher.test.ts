@@ -208,6 +208,9 @@ vi.mock("../../../src/config/constants.js", () => ({
     OPENROUTER: { maxConcurrent: 3, minTime: 500 },
   },
   MARKETS: ["us_stock", "indian_equity", "crypto", "social"],
+  DEFAULTS: {
+    FETCH_TIMEOUT_MS: 15_000,
+  },
 }));
 
 vi.mock("drizzle-orm", () => ({

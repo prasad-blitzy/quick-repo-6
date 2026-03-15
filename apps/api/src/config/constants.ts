@@ -186,6 +186,13 @@ export const DEFAULTS = {
    * of positive news; 2.5x is the midpoint of that range.
    */
   NEGATIVE_NEWS_WEIGHT_MULTIPLIER: 2.5,
+  /**
+   * Default HTTP fetch timeout in milliseconds for all external API requests.
+   * Prevents network calls from hanging indefinitely when an external API
+   * becomes unresponsive. Used as `AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS)`
+   * on all `fetch()` calls in the news-fetcher modules.
+   */
+  FETCH_TIMEOUT_MS: 15_000,
 } as const;
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@
 
 import { createLogger } from "../../lib/logger.js";
 import { getBinanceLimiter } from "../../lib/rate-limiter.js";
-import { API_BASE_URLS } from "../../config/constants.js";
+import { API_BASE_URLS, DEFAULTS } from "../../config/constants.js";
 import type { NormalizedArticle } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ export async function fetchBinanceData(): Promise<NormalizedArticle[]> {
     const priceUrl = `${API_BASE_URLS.BINANCE}/ticker/price`;
 
     const priceResponse = await limiter.schedule(async () => {
-      const response = await fetch(priceUrl);
+      const response = await fetch(priceUrl, { signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) });
       if (!response.ok) {
         throw new Error(
           `Binance ticker/price API error: HTTP ${response.status.toString()} ${response.statusText}`,
@@ -307,7 +307,7 @@ export async function fetchBinanceData(): Promise<NormalizedArticle[]> {
     const klinePromises = relevantPairs.map((pair) =>
       limiter.schedule(async () => {
         const klineUrl = `${API_BASE_URLS.BINANCE}/klines?symbol=${pair.symbol}&interval=1h&limit=24`;
-        const klineResponse = await fetch(klineUrl);
+        const klineResponse = await fetch(klineUrl, { signal: AbortSignal.timeout(DEFAULTS.FETCH_TIMEOUT_MS) });
 
         if (!klineResponse.ok) {
           throw new Error(
