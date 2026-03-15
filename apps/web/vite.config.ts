@@ -41,6 +41,25 @@ export default defineConfig({
 
     // Enable source maps for production debugging and error tracking.
     sourcemap: true,
+
+    // Rollup output configuration for code-splitting optimisation.
+    // Combined with `React.lazy()` route-based splitting in `App.tsx`, this
+    // ensures that the charting library (Recharts, ~400 KB) and core
+    // React/Router framework code are isolated into dedicated vendor chunks.
+    // Each chunk stays well below the 500 KB warning threshold.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Router — shared by every route, but small enough to justify a
+          // separate chunk so updates to routing don't bust the React cache.
+          'vendor-router': ['react-router-dom'],
+          // Recharts — heavy charting library only used by Performance page.
+          // Keeping it in its own chunk means it is only fetched when the
+          // user navigates to `/performance`.
+          'vendor-recharts': ['recharts'],
+        },
+      },
+    },
   },
 
   // ---------------------------------------------------------------------------
