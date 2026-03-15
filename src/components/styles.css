@@ -1,0 +1,3024 @@
+/**
+ * src/components/styles.css
+ * Shadow DOM Scoped Stylesheet — GMGN Signal Bot Chrome Extension
+ *
+ * All styles are isolated inside the Shadow DOM container, ensuring
+ * zero CSS leakage to/from the GMGN host page. Custom properties
+ * are defined at the :host level for consistent dark-theme tokens.
+ *
+ * Component coverage:
+ *   App, SignalPanel, TokenCard, SafetyBadge, ScoreGauge,
+ *   AIInsight, ExitStrategy, SmartMoneyIndicator, SettingsPanel,
+ *   NewTokenFeed, ErrorBoundary, EmptyState
+ */
+
+/* ==========================================================================
+   Phase 1 — CSS Custom Properties (Dark Theme at :host)
+   ========================================================================== */
+
+:host {
+  /* ---------- Background colors — matching GMGN dark theme ---------- */
+  --bg-primary: #0f1419;
+  --bg-secondary: #1a1f2e;
+  --bg-tertiary: #242938;
+  --bg-card: #1e2333;
+  --bg-hover: #2a3042;
+
+  /* ---------- Text colors ---------- */
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0a6;
+  --text-muted: #5f6368;
+
+  /* ---------- Accent colors ---------- */
+  --green: #22c55e;
+  --green-dim: rgba(34, 197, 94, 0.15);
+  --yellow: #eab308;
+  --yellow-dim: rgba(234, 179, 8, 0.15);
+  --orange: #f97316;
+  --orange-dim: rgba(249, 115, 22, 0.15);
+  --red: #ef4444;
+  --red-dim: rgba(239, 68, 68, 0.15);
+  --blue: #3b82f6;
+  --blue-dim: rgba(59, 130, 246, 0.15);
+  --purple: #a855f7;
+  --purple-dim: rgba(168, 85, 247, 0.15);
+
+  /* ---------- Typography ---------- */
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', 'Liberation Mono',
+    monospace;
+  --font-size-xs: 10px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-lg: 15px;
+  --font-size-xl: 18px;
+
+  /* ---------- Spacing ---------- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  /* ---------- Borders ---------- */
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-radius: 8px;
+  --border-radius-sm: 4px;
+
+  /* ---------- Shadows ---------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* ---------- Transitions ---------- */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+
+  /* ---------- Focus ---------- */
+  --focus-ring: 0 0 0 2px var(--blue);
+}
+
+/* ==========================================================================
+   Global Resets (scoped to Shadow DOM)
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Generic button reset so all buttons inherit the extension font */
+button {
+  font-family: inherit;
+  line-height: inherit;
+}
+
+/* Keyboard-only focus outline for interactive elements */
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ==========================================================================
+   Phase 2 — Base Container (Sidebar Shell)
+   CRITICAL positioning per AAP Section 0.1.2 / 0.7.5
+   ========================================================================== */
+
+.gmgn-bot-container {
+  position: fixed;
+  inset-inline-end: 0;
+  inset-block-start: 0;
+  inline-size: 350px;
+  block-size: 100vh;
+  z-index: 2147483647; /* Maximum 32-bit integer per AAP */
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  border-inline-start: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gmgn-bot-container.collapsed {
+  inline-size: 0;
+  border-inline-start: none;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .gmgn-bot-container {
+    transition: width var(--transition-normal);
+  }
+}
+
+/* ==========================================================================
+   Phase 3 — Panel Toggle Button
+   ========================================================================== */
+
+.panel-toggle {
+  position: absolute;
+  inset-inline-start: -24px;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  inline-size: 24px;
+  block-size: 48px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-inline-end: none;
+  border-radius: var(--border-radius-sm) 0 0 var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  z-index: 1;
+  padding: 0;
+  min-block-size: 44px; /* Touch-target minimum */
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel-toggle {
+    transition: background var(--transition-fast),
+                color var(--transition-fast);
+  }
+}
+
+@media (hover: hover) {
+  .panel-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+/* ==========================================================================
+   Phase 4 — Panel Header & Tab Bar
+   ========================================================================== */
+
+.panel-header {
+  padding: var(--space-md) var(--space-lg);
+  border-block-end: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.panel-header h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tab-bar {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.tab-bar button {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  min-block-size: 32px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tab-bar button {
+    transition: background var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
+  }
+}
+
+@media (hover: hover) {
+  .tab-bar button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+.tab-bar button.active {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* ==========================================================================
+   Phase 5 — Panel Content & Scrollable Area
+   ========================================================================== */
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-md);
+
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) transparent;
+}
+
+/* WebKit scrollbar styling */
+.panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+/* ==========================================================================
+   Phase 6 — SignalPanel Styles
+   ========================================================================== */
+
+/* Filter controls bar */
+.filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  margin-block-end: var(--space-md);
+  align-items: center;
+}
+
+.filter-controls label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.filter-controls input[type="range"] {
+  inline-size: 80px;
+  accent-color: var(--blue);
+}
+
+.filter-controls select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--border-radius-sm);
+  padding: 2px 4px;
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+}
+
+.sort-controls {
+  display: flex;
+  gap: 2px;
+}
+
+.sort-controls button {
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius-sm);
+}
+
+@media (hover: hover) {
+  .sort-controls button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+.sort-controls button.active {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* Signal summary bar */
+.signal-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.signal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+/* ==========================================================================
+   Phase 7 — TokenCard Styles
+   ========================================================================== */
+
+.token-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-md);
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .token-card {
+    transition: border-color var(--transition-fast),
+                background var(--transition-fast);
+  }
+}
+
+@media (hover: hover) {
+  .token-card:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: var(--bg-hover);
+  }
+}
+
+.token-card.expanded {
+  cursor: default;
+}
+
+/* Card header row */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.token-info {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.token-symbol {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.token-name {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin-inline-start: var(--space-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-price {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.price-change {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+}
+
+.price-change.positive {
+  color: var(--green);
+}
+
+.price-change.negative {
+  color: var(--red);
+}
+
+/* Market data metrics row */
+.market-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding-block: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  border-block-start: 1px solid var(--border-color);
+  margin-block-start: var(--space-sm);
+}
+
+/* Decision badge */
+.decision-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-block: var(--space-sm);
+}
+
+.decision-buy {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.decision-skip {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.decision-exit {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+/* Factor breakdown bars */
+.factor-breakdown {
+  padding-block: var(--space-sm);
+}
+
+.factor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: 3px;
+}
+
+.factor-name {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  inline-size: 60px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factor-bar-container {
+  flex: 1;
+  block-size: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.factor-bar {
+  block-size: 4px;
+  border-radius: 2px;
+  background: var(--green);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .factor-bar {
+    transition: width var(--transition-normal);
+  }
+}
+
+.factor-score {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  inline-size: 24px;
+  text-align: end;
+  font-family: var(--font-mono);
+}
+
+/* Quick action buttons */
+.card-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-block-start: var(--space-sm);
+  padding-block-start: var(--space-sm);
+  border-block-start: 1px solid var(--border-color);
+}
+
+.card-actions button {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  min-block-size: 28px;
+}
+
+@media (hover: hover) {
+  .card-actions button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+/* Position indicator badge */
+.position-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 1px 6px;
+  background: var(--blue-dim);
+  color: var(--blue);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Phase 8 — SafetyBadge Styles
+   ========================================================================== */
+
+.safety-dot {
+  font-size: 12px;
+  cursor: help;
+}
+
+.safety-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.safety-safe {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.safety-moderate {
+  background: var(--yellow-dim);
+  color: var(--yellow);
+}
+
+.safety-risky {
+  background: var(--orange-dim);
+  color: var(--orange);
+}
+
+.safety-critical {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.safety-pending {
+  opacity: 0.5;
+}
+
+/* Safety detail breakdown panel */
+.safety-detail {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-md);
+  margin-block-start: var(--space-sm);
+  font-size: var(--font-size-xs);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: 2px;
+  border-block-end: 1px solid var(--border-color);
+}
+
+.detail-row:last-child {
+  border-block-end: none;
+}
+
+.detail-row .pass {
+  color: var(--green);
+}
+
+.detail-row .fail {
+  color: var(--red);
+}
+
+.detail-row .warn {
+  color: var(--yellow);
+}
+
+.risk-factors ul {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-xs) 0 0;
+}
+
+.risk-factors li {
+  color: var(--orange);
+  font-size: var(--font-size-xs);
+  padding-block: 1px;
+}
+
+.risk-factors li::before {
+  content: '⚠ ';
+}
+
+/* ==========================================================================
+   Phase 9 — ScoreGauge Styles
+   ========================================================================== */
+
+.score-gauge-container {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.score-gauge {
+  display: block;
+}
+
+/* Factor breakdown tooltip (on hover/tap of gauge) */
+.factor-tooltip {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-sm);
+  min-inline-size: 180px;
+  box-shadow: var(--shadow-md);
+  margin-block-start: var(--space-xs);
+}
+
+.tooltip-header {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-block-end: var(--space-xs);
+  color: var(--text-primary);
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: 2px;
+}
+
+.factor-mini-bar {
+  flex: 1;
+  block-size: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.factor-fill {
+  block-size: 100%;
+  border-radius: 2px;
+}
+
+.factor-value {
+  font-size: 9px;
+  color: var(--text-muted);
+  inline-size: 18px;
+  text-align: end;
+  font-family: var(--font-mono);
+}
+
+.factor-weight {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* Score color utility classes
+   Used by ScoreGauge tooltip bars and AIInsight dimension bars.
+   These MUST override the factor-fill/dim-bar default background,
+   hence the specificity escalation via the attribute + class compound. */
+.score-high {
+  background: var(--green);
+}
+
+.score-medium {
+  background: var(--yellow);
+}
+
+.score-low {
+  background: var(--red);
+}
+
+/* ==========================================================================
+   Phase 10 — AIInsight Styles
+   ========================================================================== */
+
+.ai-insight {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-md);
+  margin-block-start: var(--space-sm);
+}
+
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-sm);
+}
+
+/* LLM tier badges */
+.tier-badge {
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.tier-fast {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.tier-detailed {
+  background: var(--blue-dim);
+  color: var(--blue);
+}
+
+.tier-premium {
+  background: var(--purple-dim);
+  color: var(--purple);
+}
+
+/* Confidence badges */
+.confidence-badge {
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.confidence-high {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.confidence-medium {
+  background: var(--yellow-dim);
+  color: var(--yellow);
+}
+
+.confidence-low {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.ai-score {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-inline-start: auto;
+  font-family: var(--font-mono);
+}
+
+/* 5-dimension bar chart */
+.dimension-chart {
+  margin-block: var(--space-sm);
+}
+
+.dimension-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: 3px;
+}
+
+.dim-name {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  inline-size: 70px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dim-bar-container {
+  flex: 1;
+  block-size: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.dim-bar {
+  block-size: 100%;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dim-bar {
+    transition: width var(--transition-normal);
+  }
+}
+
+.dim-score {
+  font-size: 9px;
+  color: var(--text-muted);
+  inline-size: 20px;
+  text-align: end;
+  font-family: var(--font-mono);
+}
+
+/* AI narrative */
+.ai-narrative {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.ai-narrative .truncated {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ai-narrative .expanded {
+  /* No clamp — shows full narrative */
+}
+
+.read-more {
+  color: var(--blue);
+  font-size: var(--font-size-xs);
+}
+
+/* ==========================================================================
+   Phase 11 — ExitStrategy Styles (TP/SL Ladder)
+   ========================================================================== */
+
+.exit-strategy {
+  margin-block-start: var(--space-sm);
+}
+
+.exit-ladder {
+  position: relative;
+  padding-block: var(--space-md);
+  border-inline-start: 2px solid var(--border-color);
+  margin-inline-start: var(--space-lg);
+}
+
+.ladder-level {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--font-size-xs);
+  position: relative;
+}
+
+.ladder-level::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -6px;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-color);
+}
+
+/* Take-profit levels */
+.ladder-level.tp::before {
+  border-color: var(--green);
+  background: var(--green-dim);
+}
+
+.ladder-level.tp.triggered::before {
+  background: var(--green);
+}
+
+/* Entry level */
+.ladder-level.entry::before {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+/* Stop-loss levels */
+.ladder-level.sl::before {
+  border-color: var(--red);
+  background: var(--red-dim);
+}
+
+.ladder-level.sl.triggered::before {
+  background: var(--red);
+}
+
+.triggered-badge {
+  color: var(--green);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+/* Current price indicator */
+.current-price-indicator {
+  position: relative;
+  padding: var(--space-xs) var(--space-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--blue-dim);
+  border-radius: var(--border-radius-sm);
+  margin: var(--space-xs) 0 var(--space-xs) var(--space-md);
+}
+
+/* Active alerts */
+.active-alerts {
+  margin-block-start: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.active-alerts h4 {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-sm);
+  color: var(--yellow);
+}
+
+.alert {
+  display: flex;
+  gap: var(--space-xs);
+  padding-block: var(--space-xs);
+  font-size: var(--font-size-xs);
+  align-items: baseline;
+}
+
+.alert-critical {
+  color: var(--red);
+}
+
+.alert-warning {
+  color: var(--yellow);
+}
+
+/* Position summary */
+.position-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  border-block-start: 1px solid var(--border-color);
+  margin-block-start: var(--space-sm);
+}
+
+.pnl-positive {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.pnl-negative {
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Phase 12 — SmartMoneyIndicator Styles
+   ========================================================================== */
+
+.sm-indicator {
+  padding-block: var(--space-sm);
+}
+
+.sm-indicator.empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.sm-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-sm);
+}
+
+.sm-icon {
+  font-size: 16px;
+}
+
+/* Convergence status badge */
+.convergence-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-block: var(--space-xs);
+}
+
+.convergence-status.active {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.convergence-status.inactive {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+/* Individual wallet rows */
+.wallet-list {
+  margin-block-start: var(--space-xs);
+}
+
+.wallet-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-block: var(--space-xs);
+  font-size: var(--font-size-xs);
+  border-block-end: 1px solid var(--border-color);
+}
+
+.wallet-row:last-child {
+  border-block-end: none;
+}
+
+.wallet-badge {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.wallet-address {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-entry {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.wallet-time {
+  color: var(--text-muted);
+  margin-inline-start: auto;
+}
+
+.conviction-badge {
+  color: var(--green);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+/* Wallet row modifiers — remove bottom border for non-separated rows */
+.wallet-row--no-border {
+  border-block-end: none;
+}
+
+/* Wallet row modifier — allow badge wrapping in classification summary */
+.wallet-row--wrap {
+  flex-wrap: wrap;
+}
+
+/* Expand/collapse button for wallet address list */
+.sm-expand-btn {
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: var(--space-xs) 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-sm);
+}
+
+@media (hover: hover) {
+  .sm-expand-btn:hover {
+    color: var(--text-primary);
+  }
+}
+
+.sm-expand-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--border-radius-sm);
+}
+
+/* Classification breakdown */
+.classification-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-block: var(--space-xs);
+}
+
+.classification-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Phase 13 — NewTokenFeed Styles
+   ========================================================================== */
+
+.feed-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-sm) var(--space-md);
+  margin-block-end: var(--space-sm);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .feed-item {
+    transition: border-color var(--transition-fast);
+  }
+}
+
+@media (hover: hover) {
+  .feed-item:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
+.feed-item-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.feed-item-metrics {
+  display: flex;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-block-start: var(--space-xs);
+}
+
+.feed-item-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-xs);
+}
+
+/* Bonding curve progress bar */
+.bonding-curve-bar {
+  position: relative;
+  flex: 1;
+  block-size: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bonding-curve-fill {
+  block-size: 100%;
+  border-radius: 3px;
+  background: var(--yellow);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bonding-curve-fill {
+    transition: width var(--transition-normal);
+  }
+}
+
+/* Bonding curve color variants applied via data attribute or class */
+.bonding-curve-fill.early {
+  background: var(--bg-tertiary);
+}
+
+.bonding-curve-fill.approaching {
+  background: var(--yellow);
+}
+
+.bonding-curve-fill.likely {
+  background: var(--green);
+}
+
+.bonding-curve-fill.graduated {
+  background: var(--blue);
+}
+
+.bonding-curve-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Live WebSocket indicator */
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--green);
+}
+
+.live-indicator::before {
+  content: '';
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .live-indicator::before {
+    animation: pulse 2s infinite;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Feed statistics bar */
+.feed-stats {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  margin-block-end: var(--space-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.feed-stat-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* Feed filter bar */
+.feed-filters {
+  display: flex;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.feed-filters button {
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius-sm);
+}
+
+.feed-filters button.active {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+@media (hover: hover) {
+  .feed-filters button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+/* Token age label */
+.token-age {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin-inline-start: auto;
+}
+
+/* ==========================================================================
+   Phase 14 — SettingsPanel Styles
+   ========================================================================== */
+
+.settings-panel {
+  padding-block: var(--space-sm);
+}
+
+.settings-section {
+  margin-block-end: var(--space-lg);
+  padding-block-end: var(--space-lg);
+  border-block-end: 1px solid var(--border-color);
+}
+
+.settings-section:last-child {
+  border-block-end: none;
+}
+
+.settings-section h3 {
+  margin: 0 0 var(--space-md);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* API key input fields */
+.api-key-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-md);
+}
+
+.api-key-row label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.api-key-input-group {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.api-key-input-group input {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  min-block-size: 32px;
+}
+
+.api-key-input-group input:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.api-key-input-group input::placeholder {
+  color: var(--text-muted);
+}
+
+.api-key-input-group button {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  min-inline-size: 44px; /* Touch-target minimum */
+  min-block-size: 32px;
+}
+
+@media (hover: hover) {
+  .api-key-input-group button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+.key-status {
+  font-size: 12px;
+  margin-inline-start: var(--space-xs);
+}
+
+.key-status.configured {
+  color: var(--green);
+}
+
+.key-status.missing {
+  color: var(--text-muted);
+}
+
+/* Trading mode toggle */
+.mode-toggle {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.mode-toggle button {
+  flex: 1;
+  padding: var(--space-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  min-block-size: 40px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mode-toggle button {
+    transition: background var(--transition-fast),
+                color var(--transition-fast);
+  }
+}
+
+.mode-toggle button.active {
+  background: var(--blue-dim);
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.mode-description {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-block-start: var(--space-xs);
+}
+
+/* Weight sliders */
+.weight-slider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-sm);
+}
+
+.weight-slider label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  inline-size: 100px;
+  flex-shrink: 0;
+}
+
+.weight-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--blue);
+}
+
+.weight-slider .weight-value {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  inline-size: 30px;
+  text-align: end;
+  font-family: var(--font-mono);
+}
+
+/* Reset button */
+.reset-btn {
+  padding: var(--space-xs) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  min-block-size: 28px;
+}
+
+@media (hover: hover) {
+  .reset-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+/* TP/SL profile selector */
+.profile-selector {
+  display: flex;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-md);
+}
+
+.profile-selector button {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.profile-selector button.active {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+/* TP level editor row */
+.tp-level-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.tp-level-row input {
+  inline-size: 60px;
+  padding: 2px var(--space-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  text-align: center;
+}
+
+/* Notification toggles */
+.notification-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: var(--space-xs);
+}
+
+.notification-toggle label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  inline-size: 36px;
+  block-size: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  inline-size: 0;
+  block-size: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-slider {
+    transition: background var(--transition-fast);
+  }
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  block-size: 14px;
+  inline-size: 14px;
+  inset-inline-start: 2px;
+  inset-block-end: 2px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toggle-slider::before {
+    transition: transform var(--transition-fast);
+  }
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  background: var(--blue);
+  transform: translateX(16px);
+}
+
+.toggle-switch input:focus-visible + .toggle-slider {
+  box-shadow: var(--focus-ring);
+}
+
+/* ==========================================================================
+   Phase 15 — Error Boundary Styles
+   ========================================================================== */
+
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  block-size: 100vh;
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+}
+
+.error-boundary h3 {
+  color: var(--red);
+  margin-block-end: var(--space-sm);
+  font-size: var(--font-size-lg);
+}
+
+.error-boundary p {
+  margin-block-end: var(--space-md);
+  font-size: var(--font-size-sm);
+  overflow-wrap: break-word;
+  max-inline-size: 280px;
+}
+
+.error-boundary button {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--blue);
+  border: none;
+  border-radius: var(--border-radius);
+  color: white;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  min-block-size: 36px;
+  min-inline-size: 100px;
+}
+
+@media (hover: hover) {
+  .error-boundary button:hover {
+    opacity: 0.9;
+  }
+}
+
+/* ==========================================================================
+   Phase 16 — Utility & Empty State Styles
+   ========================================================================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.empty-state p {
+  margin: var(--space-xs) 0;
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  margin-block-end: var(--space-sm);
+  opacity: 0.5;
+}
+
+/* Safety indicator inline emojis */
+.safety-indicator {
+  font-size: 14px;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  display: inline-block;
+  inline-size: 16px;
+  block-size: 16px;
+  border: 2px solid var(--bg-tertiary);
+  border-block-start-color: var(--blue);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .loading-spinner {
+    animation: spin 0.8s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Loading placeholder for cards */
+.loading-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-md);
+  margin-block-end: var(--space-sm);
+}
+
+.loading-shimmer {
+  block-size: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--border-radius-sm);
+  margin-block-end: var(--space-xs);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .loading-shimmer {
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Visually hidden — accessible text for screen readers */
+.sr-only {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Text truncation utility */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Phase 17 — SignalPanel Additional Styles
+   Covers: .signal-panel, .signal-count, .signal-count-buy
+   ========================================================================== */
+
+.signal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.signal-count {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.signal-count-buy {
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Phase 18 — SafetyBadge Additional Styles
+   Covers: .safety-icon, .safety-label, .safety-score
+   ========================================================================== */
+
+.safety-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.safety-label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.safety-score {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* ==========================================================================
+   Phase 19 — AIInsight Additional Styles
+   Covers: .dimension-row-wrapper, .dim-reasoning
+   ========================================================================== */
+
+.dimension-row-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dim-reasoning {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.3;
+  padding-inline-start: calc(70px + var(--space-xs));
+  margin-block-end: var(--space-xs);
+}
+
+/* ==========================================================================
+   Phase 20 — SmartMoneyIndicator Additional Styles
+   Covers: .sm-compact-count, .sm-wallet-section
+   ========================================================================== */
+
+.sm-compact-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.sm-wallet-section {
+  margin-block-start: var(--space-xs);
+  padding-block-start: var(--space-xs);
+  border-block-start: 1px solid var(--border-color);
+}
+
+/* ==========================================================================
+   Phase 21 — ExitStrategy Additional Styles
+   Covers all exit-* classes and ladder-level-* variants used by
+   ExitStrategy.tsx but missing from the original Phase 11 block.
+   ========================================================================== */
+
+/* --- Position Summary --- */
+
+.exit-summary {
+  padding-block-end: var(--space-sm);
+  border-block-end: 1px solid var(--border-color);
+  margin-block-end: var(--space-sm);
+}
+
+.exit-summary-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xs);
+}
+
+.exit-token-symbol {
+  font-weight: 700;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+}
+
+.exit-status-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.exit-status-active {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.exit-status-closed {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.exit-status-partial {
+  background: var(--yellow-dim);
+  color: var(--yellow);
+}
+
+.exit-summary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.exit-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-inline-size: 60px;
+}
+
+.exit-metric-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.exit-metric-value {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* P&L color utility classes for ExitStrategy */
+.exit-pnl-positive {
+  color: var(--green);
+}
+
+.exit-pnl-negative {
+  color: var(--red);
+}
+
+.exit-pnl-neutral {
+  color: var(--text-secondary);
+}
+
+/* --- Ladder Level Variants (component uses ladder-level-* prefix) --- */
+
+.ladder-level-tp {
+  /* Take-profit level */
+}
+
+.ladder-level-tp::before {
+  border-color: var(--green);
+  background: var(--green-dim);
+}
+
+.ladder-level-triggered::before {
+  background: var(--green);
+}
+
+.ladder-level-tp.ladder-level-triggered::before {
+  background: var(--green);
+}
+
+.ladder-level-current {
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--blue-dim);
+  border-radius: var(--border-radius-sm);
+}
+
+.ladder-level-current::before {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.ladder-level-entry::before {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.ladder-level-sl::before {
+  border-color: var(--red);
+  background: var(--red-dim);
+}
+
+.ladder-level-sl.ladder-level-triggered::before {
+  background: var(--red);
+}
+
+.level-indicator {
+  flex-shrink: 0;
+  inline-size: 20px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+}
+
+.level-label {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.level-price {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.level-time {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-inline-start: var(--space-xs);
+}
+
+/* --- Trailing Stop --- */
+
+.exit-trailing-stop {
+  margin-block-start: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.exit-trailing-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-xs);
+}
+
+.exit-trailing-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.exit-trailing-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.exit-trailing-details {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.exit-trailing-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.exit-trailing-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.exit-trailing-value {
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+/* --- Active Alerts (prefixed exit-alerts-*) --- */
+
+.exit-alerts {
+  margin-block-start: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.exit-alerts-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--yellow);
+}
+
+.exit-alert {
+  display: flex;
+  gap: var(--space-xs);
+  padding-block: var(--space-xs);
+  font-size: var(--font-size-xs);
+  align-items: baseline;
+}
+
+.exit-alert-critical {
+  color: var(--red);
+}
+
+.exit-alert-warning {
+  color: var(--yellow);
+}
+
+.exit-alert-type {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.exit-alert-message {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.exit-alert-time {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+/* --- Exit History --- */
+
+.exit-history {
+  margin-block-start: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.exit-history-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.exit-history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-block: var(--space-xs);
+  font-size: var(--font-size-xs);
+  border-block-end: 1px solid var(--border-color);
+}
+
+.exit-history-row:last-child {
+  border-block-end: none;
+}
+
+.exit-history-reason {
+  font-weight: 600;
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.exit-history-percent {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.exit-history-price {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.exit-history-pnl {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.exit-history-time {
+  color: var(--text-muted);
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Phase 22 — NewTokenFeed Additional Styles (ntf-* prefix)
+   Covers all ntf-* classes used by NewTokenFeed.tsx but missing from
+   the original Phase 13 block (which used unprefixed names).
+   ========================================================================== */
+
+.ntf-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.ntf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block-end: var(--space-xs);
+}
+
+.ntf-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ntf-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--green);
+  font-weight: 600;
+}
+
+.ntf-live-badge--active {
+  color: var(--green);
+}
+
+.ntf-live-badge--inactive {
+  color: var(--text-muted);
+}
+
+/* Statistics bar */
+.ntf-stats {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  margin-block-end: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.ntf-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ntf-stat-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.ntf-stat-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Filter controls */
+.ntf-filters {
+  display: flex;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.ntf-filter-select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--border-radius-sm);
+  padding: 2px var(--space-xs);
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  min-block-size: 28px;
+}
+
+.ntf-filter-select:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Scrollable feed list */
+.ntf-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  overflow-y: auto;
+  max-block-size: 400px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) transparent;
+}
+
+/* Individual feed item */
+.ntf-feed-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-sm) var(--space-md);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ntf-feed-item {
+    transition: border-color var(--transition-fast);
+  }
+}
+
+@media (hover: hover) {
+  .ntf-feed-item:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
+.ntf-feed-item-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.ntf-token-symbol {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.ntf-token-name {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ntf-token-age {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+
+.ntf-feed-item-metrics {
+  display: flex;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-block-start: var(--space-xs);
+}
+
+.ntf-metric {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.ntf-feed-item-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-xs);
+}
+
+/* Bonding curve progress bar (ntf-prefixed) */
+.ntf-bonding-curve-bar {
+  position: relative;
+  flex: 1;
+  block-size: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ntf-bonding-curve-fill {
+  block-size: 100%;
+  border-radius: 3px;
+  background: var(--yellow);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ntf-bonding-curve-fill {
+    transition: width var(--transition-normal);
+  }
+}
+
+.ntf-bonding-curve-text {
+  position: absolute;
+  inset-inline-end: var(--space-xs);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-shadow: 0 0 3px var(--bg-primary);
+  pointer-events: none;
+}
+
+/* Safety indicator with dynamic level class */
+.ntf-safety-indicator {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.ntf-safety-safe {
+  color: var(--green);
+}
+
+.ntf-safety-moderate {
+  color: var(--yellow);
+}
+
+.ntf-safety-risky {
+  color: var(--orange);
+}
+
+.ntf-safety-critical {
+  color: var(--red);
+}
+
+/* Empty state */
+.ntf-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.ntf-empty-title {
+  font-size: var(--font-size-sm);
+  margin: 0 0 var(--space-xs);
+}
+
+.ntf-empty-subtitle {
+  font-size: var(--font-size-xs);
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* No results after filtering */
+.ntf-no-results {
+  text-align: center;
+  padding: var(--space-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Phase 23 — SettingsPanel Additional Styles (settings-* prefix)
+   Covers all settings-* classes used by SettingsPanel.tsx but missing
+   from the original Phase 14 block (which used unprefixed names).
+   ========================================================================== */
+
+/* Panel layout */
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-md);
+}
+
+.settings-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* Collapsible section headers */
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-sm) 0;
+  background: transparent;
+  border: none;
+  border-block-end: 1px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  text-align: start;
+}
+
+@media (hover: hover) {
+  .settings-section-header:hover {
+    color: var(--blue);
+  }
+}
+
+.settings-section-title {
+  flex: 1;
+}
+
+.settings-section-arrow {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-inline-start: var(--space-sm);
+}
+
+/* Labels and hints */
+.settings-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  display: block;
+  margin-block-end: var(--space-xs);
+}
+
+.settings-label-subsection {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-block-end: var(--space-sm);
+}
+
+.settings-required {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.settings-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: var(--space-xs) 0 0;
+  line-height: 1.3;
+}
+
+/* Input fields */
+.settings-input {
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  min-block-size: 32px;
+}
+
+.settings-input:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.settings-input::placeholder {
+  color: var(--text-muted);
+}
+
+.settings-input-sm {
+  inline-size: 60px;
+  padding: 2px var(--space-xs);
+  text-align: center;
+}
+
+.settings-input-row {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+}
+
+.settings-field {
+  margin-block-end: var(--space-sm);
+}
+
+.settings-inline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* API Key Fields */
+.settings-api-key-field {
+  margin-block-end: var(--space-md);
+  padding-block-end: var(--space-sm);
+  border-block-end: 1px solid var(--border-color);
+}
+
+.settings-api-key-field:last-child {
+  border-block-end: none;
+}
+
+.settings-api-key-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-xs);
+}
+
+.settings-saved-indicator {
+  font-size: 14px;
+}
+
+.settings-unsaved-indicator {
+  font-size: 14px;
+}
+
+.settings-api-key-actions {
+  display: flex;
+  gap: var(--space-xs);
+  margin-block-start: var(--space-xs);
+}
+
+.settings-icon-btn {
+  padding: var(--space-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  min-inline-size: 32px;
+  min-block-size: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (hover: hover) {
+  .settings-icon-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+.settings-save-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--blue-dim);
+  border: 1px solid var(--blue);
+  border-radius: var(--border-radius-sm);
+  color: var(--blue);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  min-block-size: 28px;
+}
+
+.settings-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .settings-save-btn:hover:not(:disabled) {
+    background: var(--blue);
+    color: white;
+  }
+}
+
+.settings-test-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  min-block-size: 28px;
+}
+
+.settings-test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .settings-test-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+/* Trading Mode Toggle */
+.settings-mode-section {
+  margin-block-end: var(--space-md);
+}
+
+.settings-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.settings-mode-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  min-block-size: 40px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .settings-mode-btn {
+    transition: background var(--transition-fast),
+                color var(--transition-fast);
+  }
+}
+
+.settings-mode-active {
+  background: var(--blue-dim);
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.settings-mode-icon {
+  font-size: 18px;
+}
+
+.settings-mode-text {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.settings-mode-threshold {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.settings-threshold-display {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin: var(--space-xs) 0 0;
+  text-align: center;
+}
+
+/* Weight Sliders */
+.settings-weight-slider {
+  margin-block-end: var(--space-sm);
+}
+
+.settings-weight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-xs);
+}
+
+.settings-weight-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.settings-weight-values {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.settings-weight-value {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.settings-weight-default {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.settings-weight-desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-block-start: 2px;
+  line-height: 1.3;
+}
+
+.settings-slider {
+  width: 100%;
+  accent-color: var(--blue);
+  margin-block: var(--space-xs);
+}
+
+.settings-weight-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-xs);
+  margin-block-start: var(--space-sm);
+}
+
+.settings-weight-warn-text {
+  color: var(--yellow);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.settings-reset-btn {
+  padding: var(--space-xs) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  min-block-size: 28px;
+}
+
+@media (hover: hover) {
+  .settings-reset-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+}
+
+/* TP/SL Profile Editor */
+.settings-tpsl-editor {
+  margin-block-start: var(--space-sm);
+}
+
+.settings-tpsl-profiles {
+  display: flex;
+  gap: var(--space-xs);
+  margin-block-end: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.settings-tpsl-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.settings-tpsl-active {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.settings-tpsl-custom-btn {
+  border-style: dashed;
+}
+
+.settings-tpsl-detail {
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+
+.settings-tpsl-ladder {
+  margin-block-end: var(--space-sm);
+}
+
+.settings-tpsl-level {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-block: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.settings-tpsl-sell {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.settings-tpsl-at {
+  font-family: var(--font-mono);
+  color: var(--green);
+}
+
+.settings-tpsl-sl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  padding-block-start: var(--space-xs);
+  border-block-start: 1px solid var(--border-color);
+}
+
+.settings-tpsl-sl-value {
+  font-family: var(--font-mono);
+  color: var(--red);
+  font-weight: 600;
+}
+
+/* Custom profile editor */
+.settings-tpsl-custom {
+  padding: var(--space-sm);
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.settings-tpsl-ladder-edit {
+  margin-block-end: var(--space-sm);
+}
+
+.settings-tpsl-level-edit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xs);
+}
+
+.settings-add-btn {
+  padding: var(--space-xs) var(--space-sm);
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  width: 100%;
+  text-align: center;
+  min-block-size: 28px;
+}
+
+@media (hover: hover) {
+  .settings-add-btn:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+}
+
+.settings-remove-btn {
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (hover: hover) {
+  .settings-remove-btn:hover {
+    border-color: var(--red);
+    color: var(--red);
+  }
+}
+
+/* Hard Exit Triggers */
+.settings-exit-triggers {
+  margin-block-start: var(--space-sm);
+}
+
+.settings-trigger-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding-block: var(--space-xs);
+}
+
+.settings-trigger-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-trigger-label input[type="checkbox"] {
+  accent-color: var(--blue);
+}
+
+.settings-trigger-threshold {
+  margin-inline-start: var(--space-lg);
+}
+
+/* Notification Preferences */
+.settings-notifications {
+  margin-block-start: var(--space-sm);
+}
+
+.settings-notif-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: var(--space-xs);
+}
+
+.settings-notif-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-notif-label input[type="checkbox"] {
+  accent-color: var(--blue);
+}

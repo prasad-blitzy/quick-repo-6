@@ -1,0 +1,69 @@
+# ========================================
+# GMGN Signal Bot — Chrome Extension
+# Git Ignore Patterns
+# ========================================
+
+# ----------------------------------------
+# Dependencies
+# ----------------------------------------
+node_modules/
+
+# ----------------------------------------
+# Package manager debug logs
+# ----------------------------------------
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ----------------------------------------
+# WXT build output
+# ----------------------------------------
+# Production build (chrome-mv3/) and dev build (chrome-mv3-dev/)
+.output/
+# WXT internal build cache and generated type definitions
+.wxt/
+# Alternative/generic build output
+dist/
+
+# ----------------------------------------
+# Environment variables and secrets
+# ----------------------------------------
+# Contains API keys: BIRDEYE, HELIUS, GROQ, RUGCHECK, ANTHROPIC
+.env
+.env.local
+.env.*.local
+# NOTE: .env.example is NOT ignored — it is the API key template
+
+# ----------------------------------------
+# IDE and editor files
+# ----------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ----------------------------------------
+# OS-generated files
+# ----------------------------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------------------------
+# TypeScript build artifacts
+# ----------------------------------------
+*.tsbuildinfo
+
+# ----------------------------------------
+# Test coverage reports (Vitest / V8)
+# ----------------------------------------
+coverage/
+
+# ----------------------------------------
+# Chrome Extension packaging
+# ----------------------------------------
+# Distribution packages created by `npm run zip`
+*.zip
+# Web extension packaging artifacts
+web-ext-artifacts/

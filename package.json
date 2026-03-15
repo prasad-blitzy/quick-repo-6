@@ -1,0 +1,33 @@
+{
+  "name": "gmgn-signal-bot",
+  "version": "1.0.0",
+  "description": "GMGN.ai memecoin signal bot Chrome Extension — real-time trading signal generation for Solana memecoin trading",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "groq-sdk": "^0.18.0",
+    "preact": "^10.29.0",
+    "wxt": "^0.20.17",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.3",
+    "@testing-library/preact": "^3.2.4",
+    "@types/chrome": "latest",
+    "happy-dom": "latest",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
+    "@vitest/coverage-v8": "^4.1.0",
+    "vitest": "^4.1.0"
+  }
+}
