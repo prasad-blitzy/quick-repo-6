@@ -445,13 +445,13 @@ export default function Performance(): React.JSX.Element {
       {data?.marketBreakdown !== undefined &&
         data.marketBreakdown.length > 0 && (
           <div className="market-breakdown">
-            <h3 className="section-title">Performance by Market</h3>
+            <h2 className="section-title">Performance by Market</h2>
             <div className="market-breakdown-grid">
               {data.marketBreakdown.map((mb) => (
                 <div key={mb.market} className="card market-card">
-                  <h4 className="text-lg font-semibold">
+                  <h3 className="text-lg font-semibold">
                     {getMarketLabel(mb.market)}
-                  </h4>
+                  </h3>
                   <div className="market-stats">
                     <div>
                       <span className="text-xs text-secondary">Trades</span>
