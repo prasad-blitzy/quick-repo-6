@@ -288,7 +288,8 @@ API keys are managed through the extension's **Settings panel** accessible from 
 ├── docs/                     # Documentation
 │   ├── ARCHITECTURE.md       # System architecture and data flow
 │   ├── API-INTEGRATION.md    # External API reference and setup
-│   └── SIGNALS.md            # Signal scoring methodology
+│   ├── SIGNALS.md            # Signal scoring methodology
+│   └── setup-guide.md        # Developer setup and sideloading instructions
 ├── assets/                   # Extension icons
 │   ├── icon-16.png           # Toolbar icon (16×16)
 │   ├── icon-48.png           # Management page icon (48×48)
@@ -503,3 +504,4 @@ This project is licensed under the [MIT License](LICENSE).
 | [Architecture](docs/ARCHITECTURE.md) | System architecture, data flow diagrams, and component descriptions |
 | [API Integration](docs/API-INTEGRATION.md) | External API reference — endpoints, authentication, rate limits, and response schemas |
 | [Signal Engine](docs/SIGNALS.md) | Signal scoring algorithm details — factor weights, thresholds, and calibration methodology |
+| [Setup Guide](docs/setup-guide.md) | Developer setup instructions — API key configuration, build, and Chrome sideloading |

@@ -413,7 +413,7 @@ Returns data for a specific trading pair.
 | **Base URL** | `https://api.rugcheck.xyz` |
 | **Authentication** | `X-API-KEY` header with RugCheck API key |
 | **Cost** | Free tier available |
-| **Rate Limit** | Best-effort (no documented strict limit) |
+| **Rate Limit** | 5 RPS / burst 5 (no documented strict limit; conservative default applied in `rate-limiter.ts`) |
 | **Swagger Docs** | `https://api.rugcheck.xyz/swagger/index.html` |
 | **Response Types** | `RugCheckReport` (defined in `src/api/types.ts`) |
 | **Used By** | `src/safety/checker.ts` → `src/signals/factors/safety-score.ts` |
@@ -458,7 +458,7 @@ Returns a graph of insider wallet connections, revealing coordinated wallets tha
 | **Base URL** | `https://api.gopluslabs.io` |
 | **Authentication** | None (free beta) |
 | **Cost** | Free |
-| **Rate Limit** | Best-effort (free tier) |
+| **Rate Limit** | 5 RPS / burst 5 (free tier; conservative default applied in `rate-limiter.ts`) |
 | **Response Types** | `GoPlusResult` (defined in `src/api/types.ts`) |
 | **Used By** | `src/safety/checker.ts` → `src/signals/factors/safety-score.ts` |
 
@@ -610,11 +610,11 @@ Each provider has a bucket that holds a fixed number of tokens (equal to its RPS
 |----------|---------------|-------------|----------|-------|
 | Birdeye | 15 | 15 | Yes | Primary analytics source |
 | Jupiter | 1 | 1 | Yes | Honeypot detection (safety-critical) |
-| DexScreener | 5 | 5 | No | Fallback only |
+| DexScreener | 5 | 10 | No | Fallback only |
 | Helius | 10 | 10 | Yes | Smart money wallet tracking |
-| Groq | Per-model RPM | Variable | No | LLM inference |
-| RugCheck | Unlimited* | N/A | Yes | Safety-critical (*best-effort) |
-| GoPlus | Unlimited* | N/A | Yes | Safety-critical (*best-effort) |
+| Groq | 2 | 5 | No | LLM inference |
+| RugCheck | 5 | 5 | Yes | Safety-critical |
+| GoPlus | 5 | 5 | Yes | Safety-critical |
 
 ### Request Queue Behavior
 

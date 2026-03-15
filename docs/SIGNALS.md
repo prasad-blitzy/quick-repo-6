@@ -570,7 +570,9 @@ The LLM router selects the appropriate model based on the initial composite scor
 |------|-------|----------------|------------|---------|------|
 | 1 (Fast) | `llama-3.1-8b-instant` | < 45 | ~80% | Quick pass/fail screening | Lowest |
 | 2 (Detailed) | `llama-3.3-70b-versatile` | 45–80 | ~15% | Detailed multi-dimension analysis | Moderate |
-| 3 (Narrative) | Claude Sonnet | > 80 | ~5% | Deep narrative analysis for top signals | Highest |
+| 3 (Narrative) | Claude Sonnet | > 80 | ~5% | Deep narrative analysis for top signals (opt-in) | Highest |
+
+> **Important:** The Claude Sonnet (Premium/Narrative) tier is **disabled by default**. When disabled, all tokens with composite score ≥ 80 are routed to the Detailed tier (`llama-3.3-70b-versatile`) instead. To enable the Premium tier, toggle `enablePremiumTier: true` in the AI Router configuration via the Settings panel. This default-off behavior keeps costs minimal until the user explicitly opts in with a valid Anthropic API key.
 
 This **80/15/5 distribution** reduces LLM costs by approximately **60%** compared to routing all tokens through the most capable model. Combined with Groq's prompt caching (50% discount on cached input tokens), the expected monthly LLM cost is **$5–$15**.
 
@@ -682,7 +684,8 @@ The following diagram illustrates the complete signal processing pipeline from d
 │                                                              │
 │  Score < 45  → llama-3.1-8b-instant (quick screen)         │
 │  Score 45–80 → llama-3.3-70b-versatile (detailed)          │
-│  Score > 80  → Claude Sonnet (narrative)                    │
+│  Score > 80  → Claude Sonnet (if enablePremiumTier=true)   │
+│               → llama-3.3-70b-versatile (default)          │
 │                                                              │
 │  5 Dimensions: Momentum │ Social │ Wallets │ LP │ Narrative │
 └──────────────────────────┬──────────────────────────────────┘
