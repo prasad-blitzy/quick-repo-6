@@ -256,12 +256,15 @@ newsRouter.get(
         totalCount > 0 ? Math.ceil(totalCount / limit) : 0;
 
       res.json({
-        data,
-        pagination: {
-          page,
-          limit,
-          total: totalCount,
-          totalPages,
+        success: true,
+        data: {
+          data,
+          pagination: {
+            page,
+            limit,
+            total: totalCount,
+            totalPages,
+          },
         },
       });
 

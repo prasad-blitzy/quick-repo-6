@@ -267,7 +267,24 @@ healthRouter.get(
       // partially operational). HTTP 503 for unhealthy (service unavailable).
       const httpStatus = overallStatus === "unhealthy" ? 503 : 200;
 
-      res.status(httpStatus).json(response);
+      // Wrap in ApiResponse<HealthStatus> envelope matching the frontend
+      // HealthStatus type: { status, postgres: boolean, redis: boolean,
+      // lastChecked: string }. The raw `checks` and `uptime` fields are
+      // kept in the response body alongside the envelope for backwards
+      // compatibility with any consumers that already use the raw shape.
+      res.status(httpStatus).json({
+        success: true,
+        data: {
+          status: overallStatus,
+          postgres: checks.database.status === "up",
+          redis: checks.redis.status === "up",
+          lastChecked: response.timestamp,
+        },
+        // Retain detailed check information for advanced consumers
+        checks: response.checks,
+        uptime: response.uptime,
+        timestamp: response.timestamp,
+      });
     } catch (error: unknown) {
       // Catch-all for unexpected errors (e.g., serialization failures).
       // Forwards to the global Express error handler middleware.

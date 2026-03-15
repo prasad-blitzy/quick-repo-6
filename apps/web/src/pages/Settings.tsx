@@ -456,7 +456,7 @@ export default function Settings() {
                       handleTimeframeToggle(option.value);
                     }}
                   />
-                  <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <span className="checkbox-label">{option.label}</span>
                     <span className="text-xs text-secondary">
                       {option.description}

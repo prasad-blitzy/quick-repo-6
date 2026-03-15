@@ -116,10 +116,8 @@ settingsRouter.get(
 
       if (typeof chatIdParam !== "string" || chatIdParam.length === 0) {
         res.status(400).json({
-          error: {
-            message: "Chat ID is required",
-            code: "VALIDATION_ERROR",
-          },
+          success: false,
+          error: "Chat ID is required",
         });
         return;
       }
@@ -138,16 +136,15 @@ settingsRouter.get(
 
       if (!user) {
         res.status(404).json({
-          error: {
-            message: "User settings not found",
-            code: "NOT_FOUND",
-          },
+          success: false,
+          error: "User settings not found",
+          message: "No user settings found for the given Telegram chat ID",
         });
         return;
       }
 
       logger.debug({ chatId }, "User settings fetched");
-      res.json({ data: user });
+      res.json({ success: true, data: user });
     } catch (error: unknown) {
       next(error);
     }
@@ -193,10 +190,8 @@ settingsRouter.put(
 
       if (typeof chatIdParam !== "string" || chatIdParam.length === 0) {
         res.status(400).json({
-          error: {
-            message: "Chat ID is required",
-            code: "VALIDATION_ERROR",
-          },
+          success: false,
+          error: "Chat ID is required",
         });
         return;
       }
@@ -208,11 +203,9 @@ settingsRouter.put(
 
       if (!parsed.success) {
         res.status(400).json({
-          error: {
-            message: "Invalid settings data",
-            code: "VALIDATION_ERROR",
-            details: parsed.error.flatten(),
-          },
+          success: false,
+          error: "Invalid settings data",
+          message: JSON.stringify(parsed.error.flatten()),
         });
         return;
       }
@@ -256,10 +249,9 @@ settingsRouter.put(
 
       if (!updated) {
         res.status(404).json({
-          error: {
-            message: "User settings not found",
-            code: "NOT_FOUND",
-          },
+          success: false,
+          error: "User settings not found",
+          message: "No user settings found for the given Telegram chat ID",
         });
         return;
       }
@@ -269,7 +261,7 @@ settingsRouter.put(
         { chatId, updatedFields: Object.keys(parsed.data) },
         "User settings updated",
       );
-      res.json({ data: updated });
+      res.json({ success: true, data: updated });
     } catch (error: unknown) {
       next(error);
     }

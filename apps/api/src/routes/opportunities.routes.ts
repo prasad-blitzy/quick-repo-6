@@ -273,19 +273,34 @@ opportunitiesRouter.get(
         .offset(offset);
 
       // -----------------------------------------------------------------------
-      // Step 6: Return paginated response envelope
+      // Step 6: Flatten query results — extract opportunity with article context
+      // -----------------------------------------------------------------------
+      // The Drizzle LEFT JOIN returns { opportunity: {...}, article: {...} }
+      // per row. The frontend TradeCard expects flat TradeOpportunity objects.
+      // Flatten by spreading the opportunity fields and attaching article as
+      // a nested property for reference.
+      const flattenedData = data.map((row) => ({
+        ...row.opportunity,
+        article: row.article,
+      }));
+
+      // -----------------------------------------------------------------------
+      // Step 7: Return paginated response envelope
       // -----------------------------------------------------------------------
       // Number(total) ensures the count is a JavaScript number regardless
       // of whether the pg driver returns it as a string or number.
       const totalPages = Math.ceil(Number(total) / limit);
 
       res.json({
-        data,
-        pagination: {
-          page,
-          limit,
-          total: Number(total),
-          totalPages,
+        success: true,
+        data: {
+          data: flattenedData,
+          pagination: {
+            page,
+            limit,
+            total: Number(total),
+            totalPages,
+          },
         },
       });
 

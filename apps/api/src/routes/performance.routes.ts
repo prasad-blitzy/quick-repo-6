@@ -161,7 +161,7 @@ performanceRouter.get(
         return;
       }
 
-      const { startDate, endDate, market, aggregation } = parsed.data;
+      const { startDate, endDate, market } = parsed.data;
 
       // -----------------------------------------------------------------
       // Step 2: Build WHERE conditions for the JOIN query
@@ -236,9 +236,8 @@ performanceRouter.get(
       const winners = Number(stats?.winners ?? 0);
       const losers = Number(stats?.losers ?? 0);
 
-      // Win rate is a percentage ratio (not monetary), so JS arithmetic
-      // is safe here. The toFixed(2) ensures consistent decimal formatting.
-      const winRate = totalTrades > 0 ? (winners / totalTrades) * 100 : 0;
+      // Win rate is computed inline in the response object below (line ~264)
+      // using 0.00–1.00 range rather than percentage for frontend consumption.
 
       // -----------------------------------------------------------------
       // Step 5: Return aggregate statistics
@@ -247,23 +246,30 @@ performanceRouter.get(
       // from PostgreSQL. The frontend is responsible for formatting these
       // for display (e.g., currency symbols, locale-specific formatting).
 
+      // Wrap in ApiResponse<PerformanceResponse> envelope matching the
+      // frontend PerformanceResponse type shape expected by Performance.tsx.
+      // Fields mapped: winners → wins, losers → losses, avgPnl → averagePnl.
+      // winRate is kept in 0.00–1.00 range (frontend multiplies by 100).
+      // chartData, marketBreakdown, and recentTrades require dedicated
+      // queries not yet implemented — return empty arrays to prevent
+      // runtime crashes while satisfying the TypeScript contract.
       res.json({
+        success: true,
         data: {
-          totalTrades,
-          winners,
-          losers,
-          winRate: Number(winRate.toFixed(2)),
-          totalPnl: stats?.totalPnl ?? "0",
-          avgPnl: stats?.avgPnl ?? "0",
-          bestTrade: stats?.bestTrade ?? "0",
-          worstTrade: stats?.worstTrade ?? "0",
-          avgPnlPercentage: stats?.avgPnlPercentage ?? "0",
-        },
-        filters: {
-          startDate: startDate ?? null,
-          endDate: endDate ?? null,
-          market: market ?? null,
-          aggregation,
+          summary: {
+            totalTrades,
+            wins: winners,
+            losses: losers,
+            winRate: totalTrades > 0 ? Number((winners / totalTrades).toFixed(4)) : 0,
+            totalPnl: stats?.totalPnl ?? "0",
+            averagePnl: stats?.avgPnl ?? "0",
+            bestTrade: stats?.bestTrade ?? "0",
+            worstTrade: stats?.worstTrade ?? "0",
+            averageHoldTime: "N/A",
+          },
+          chartData: [],
+          marketBreakdown: [],
+          recentTrades: [],
         },
       });
 
