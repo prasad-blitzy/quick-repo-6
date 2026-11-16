@@ -8,9 +8,14 @@
  * INTERNAL_ERROR is the fallback for an unexpected throw — it keeps the `{ code, message }` body
  * shape true and is not another trigger of its own.
  *
- * Each message is a complete sentence read by the operator, so it names the limit it hit and
- * never a path, a stack, a credential or a provider model. Where a sentence cites a number, the
- * number is derived from the bound in ./limits.js so the two cannot drift apart.
+ * Each default sentence here is a complete sentence read by the operator, so it names the limit it
+ * hit and never a path, a stack or a credential. A sentence is the opening of the message rather
+ * than the whole of it: the server's error model appends the details only it holds, namely the
+ * offending file name and, for PROVIDER_MODEL_UNSUPPORTED, the model slug the process is configured
+ * with, while the credential stays out of every message.
+ *
+ * Where a sentence cites a number, the number is derived from the bound in ./limits.js so the two
+ * cannot drift apart.
  */
 
 import {
@@ -41,10 +46,11 @@ export const ERROR_CODES = [
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /**
- * The HTTP status each code is answered with. Typed as a complete record, so a code added to
- * ERROR_CODES without a status stops the build instead of answering with a missing status.
+ * The HTTP status each code is answered with. Typed as a complete record and frozen, so a code
+ * added to ERROR_CODES without a status stops the build instead of answering with a missing
+ * status, and no consumer can reassign a status for the rest of the process.
  */
-export const ERROR_STATUS: Record<ErrorCode, number> = {
+export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = Object.freeze({
   NO_IMAGES: 400,
   TOO_MANY_IMAGES: 400,
   UNSUPPORTED_IMAGE_TYPE: 400,
@@ -58,13 +64,13 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   ANALYSIS_FAILED: 502,
   NOT_FOUND: 404,
   INTERNAL_ERROR: 500,
-};
+});
 
 /**
  * The default sentence returned with each code, shown to the operator as-is. Typed as a complete
- * record for the same reason as ERROR_STATUS, so no code can be answered without one.
+ * record and frozen for the same reason as ERROR_STATUS, so no code can be answered without one.
  */
-export const ERROR_MESSAGES: Record<ErrorCode, string> = {
+export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = Object.freeze({
   NO_IMAGES: `Submit at least one chart screenshot, up to ${MAX_IMAGES} per analysis.`,
   TOO_MANY_IMAGES: `Submit at most ${MAX_IMAGES} images per analysis.`,
   UNSUPPORTED_IMAGE_TYPE: "Only PNG, JPEG and WebP images are accepted.",
@@ -85,4 +91,4 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
     "The analysis provider returned an answer that could not be used.",
   NOT_FOUND: "That analysis does not exist.",
   INTERNAL_ERROR: "Something went wrong while handling the request.",
-};
+});

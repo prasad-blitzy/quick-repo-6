@@ -106,7 +106,12 @@ export interface Rationale {
 export interface ModelUsage {
   provider: "openrouter";
   model: string;
-  /** The versions of the built-in instructions that produced this document. */
+  /**
+   * The built-in instruction versions that produced this document, as the single string
+   * `extraction@<extractionVersion>;synthesis@<synthesisVersion>`: the extraction version first,
+   * the synthesis version second, joined by `;`. The server writes it from the prompt library at
+   * request time, so splitting on `;` recovers both versions.
+   */
   promptVersion: string;
   imageCallCount: number;
   synthesisCompletionTokens: number;
