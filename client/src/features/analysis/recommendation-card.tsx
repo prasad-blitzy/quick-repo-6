@@ -65,6 +65,24 @@ function priceText(level: Level | undefined): string {
   return level === undefined ? NO_VALUE : String(level.price);
 }
 
+/**
+ * A reference the read holds no level for, said rather than only drawn.
+ *
+ * The em dash is what the card shows and stays exactly as it was; the clipped sentence beside it
+ * is what assistive technology announces in its place, so a `NO_TRADE`/`WAIT` read reports three
+ * absent references instead of three dashes. The dash is hidden from the accessibility tree and
+ * the sentence is clipped by the stylesheet's `.visually-hidden` utility, so nothing the card
+ * renders for a sighted reader changes.
+ */
+function NoValue() {
+  return (
+    <>
+      <span aria-hidden="true">{NO_VALUE}</span>
+      <span className="visually-hidden">not available</span>
+    </>
+  );
+}
+
 interface PriceCellProps {
   label: string;
   /** The reference the recommendation holds, or null where it holds none. */
@@ -91,7 +109,7 @@ function PriceCell({ label, levelId, level }: PriceCellProps) {
             className="recommendation__value recommendation__value--none"
             data-missing-level-id={levelId ?? undefined}
           >
-            {NO_VALUE}
+            <NoValue />
           </span>
         ) : (
           priceText(level)
@@ -149,7 +167,9 @@ export function RecommendationCard({ recommendation, levels }: RecommendationCar
           <dt className="recommendation__label">Targets</dt>
           <dd className="recommendation__value">
             {targetLevelIds.length === 0 ? (
-              <span className="recommendation__value recommendation__value--none">{NO_VALUE}</span>
+              <span className="recommendation__value recommendation__value--none">
+                <NoValue />
+              </span>
             ) : (
               <ul className="recommendation__targets">
                 {targetLevelIds.map((targetLevelId, index) => {
@@ -166,7 +186,7 @@ export function RecommendationCard({ recommendation, levels }: RecommendationCar
                           className="recommendation__value recommendation__value--none"
                           data-missing-level-id={targetLevelId}
                         >
-                          {NO_VALUE}
+                          <NoValue />
                         </span>
                       ) : (
                         priceText(target)
@@ -188,7 +208,7 @@ export function RecommendationCard({ recommendation, levels }: RecommendationCar
         </div>
       </dl>
 
-      <p className="recommendation__summary">{summary === '' ? NO_VALUE : summary}</p>
+      <p className="recommendation__summary">{summary === '' ? <NoValue /> : summary}</p>
     </section>
   );
 }

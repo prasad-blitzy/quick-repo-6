@@ -124,8 +124,10 @@ select:focus-visible,
 }
 
 /*
- * Clipped rather than display:none, so the file input stays in the tab order and in the
- * accessibility tree; the drop zone it belongs to carries the visible focus ring.
+ * Clipped rather than display:none, so the content stays rendered and readable while it is
+ * invisible. The drop zone's file input is deliberately in neither the tab order nor the
+ * accessibility tree (`aria-hidden="true"`, `tabIndex={-1}`): the zone is the accessible control
+ * and carries the focus ring, and the input is only the picker the zone opens.
  */
 .visually-hidden,
 .drop-zone__input {
@@ -277,7 +279,7 @@ select:focus-visible,
 }
 
 @media (hover: hover) {
-  .drop-zone:hover {
+  .drop-zone:hover:not([aria-disabled='true']) {
     background: var(--color-surface);
     border-color: var(--color-accent);
   }
@@ -288,6 +290,28 @@ select:focus-visible,
   background: var(--color-accent-surface);
   border-color: var(--color-accent);
   border-style: solid;
+}
+
+/* Pressed without a drop landing yet: the drag-active fill, one step stronger on the border. */
+.drop-zone:active:not([aria-disabled='true']) {
+  background: var(--color-accent-surface);
+  border-color: var(--color-accent-strong);
+}
+
+/*
+ * A disabled zone reads as inert, not merely dimmed: flattened to the surface colour with a
+ * solid border and a muted title so it never looks like a drop target. No opacity is used, so
+ * every word keeps its contrast.
+ */
+.drop-zone[aria-disabled='true'] {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  border-style: solid;
+  cursor: not-allowed;
+}
+
+.drop-zone[aria-disabled='true'] .drop-zone__title {
+  color: var(--color-text-muted);
 }
 
 .drop-zone__title {
@@ -383,6 +407,12 @@ select:focus-visible,
     color: var(--color-accent-contrast);
     background: var(--color-danger);
   }
+}
+
+/* The pressed fill is the hover fill, so the same contrast holds where hover never happens. */
+.thumbnail__remove:active {
+  color: var(--color-accent-contrast);
+  background: var(--color-danger);
 }
 
 .rejections {
@@ -512,6 +542,29 @@ textarea.field__input {
   }
 }
 
+/*
+ * Pressed states live outside the hover query, so a touch or a keyboard activation shows the
+ * control reacting too. Each fill keeps the text contrast of the variant it belongs to.
+ */
+.button:active:not(:disabled) {
+  box-shadow: inset 0 1px 2px var(--color-shadow);
+}
+
+.button--primary:active:not(:disabled) {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.button--secondary:active:not(:disabled) {
+  background: var(--color-accent-surface);
+  border-color: var(--color-accent-strong);
+}
+
+.button--danger:active:not(:disabled) {
+  color: var(--color-accent-contrast);
+  background: var(--color-danger);
+}
+
 /* Text plus a single pulsing dot: no full-screen overlay, no infinite spinner layer. */
 .pending-indicator {
   display: inline-flex;
@@ -595,6 +648,11 @@ textarea.field__input {
   --recommendation-accent: var(--color-text-muted);
 }
 
+/*
+ * `recommendation__title` is the card's heading hook and `recommendation__side` is the side's
+ * accent; the one heading carries both, so one rule supplies the type scale and the colour.
+ */
+.recommendation__title,
 .recommendation__side {
   margin: 0;
   font-size: 1.5rem;
@@ -620,6 +678,20 @@ textarea.field__input {
   margin: 0;
 }
 
+/*
+ * The browser's 40px dd indent must not push a value away from its label inside the grid
+ * track, so both halves of a cell start flush.
+ */
+.recommendation__grid dt,
+.recommendation__grid dd {
+  margin: 0;
+}
+
+/* A grid child must be allowed to shrink, or a long price blows the track out. */
+.recommendation__cell {
+  min-width: 0;
+}
+
 .recommendation__label {
   display: block;
   font-size: 0.75rem;
@@ -635,6 +707,28 @@ textarea.field__input {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+/*
+ * `--none` marks a reference this read does not carry, so it must not read as a price: label
+ * weight in the muted colour, declared after the value rule it modifies.
+ */
+.recommendation__value--none {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.recommendation__targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recommendation__target {
+  font-variant-numeric: tabular-nums;
 }
 
 .recommendation__summary {
@@ -654,19 +748,27 @@ textarea.field__input {
   overflow-x: auto;
 }
 
-.level-table {
+/*
+ * The box rules belong to the table alone: the `<section>` carries the same hook as its
+ * container and sits outside `.level-table__scroll`, so a `min-width` on it would push the whole
+ * page instead of letting the scroller scroll.
+ */
+.level-table__table,
+table.level-table {
   width: 100%;
   min-width: 20rem;
   border-collapse: collapse;
   font-size: 0.9375rem;
 }
 
-.level-table__caption {
-  padding-block-end: var(--space-xs);
-  caption-side: top;
-  text-align: start;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
+/*
+ * The visible heading carries `level-table__title`; the table's `<caption>` is clipped by
+ * `.visually-hidden`, so only the heading needs type styling.
+ */
+.level-table__title {
+  margin: 0 0 var(--space-sm);
+  font-size: 1.0625rem;
+  font-weight: 600;
 }
 
 .level-table th,
@@ -695,13 +797,35 @@ textarea.field__input {
   white-space: nowrap;
 }
 
-.evidence-list {
+.level-table__note {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.level-table__image {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The inner `<ul>` carries `evidence-list__items` beside the section's own hook, so both names
+ * are listed and neither can be dropped as unused.
+ */
+.evidence-list,
+.evidence-list__items {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.evidence-list__title {
+  margin: 0 0 var(--space-sm);
+  font-size: 1.0625rem;
+  font-weight: 600;
 }
 
 .evidence-list__item {
@@ -716,11 +840,40 @@ textarea.field__input {
   font-size: 0.9375rem;
 }
 
-.evidence-list__refs {
+/*
+ * The source line is rendered as `evidence-list__source evidence-list__refs`, so the block hook
+ * is named here beside the element hook.
+ */
+.evidence-list__refs,
+.evidence-list__source {
   margin-block: 0.125rem 0;
   font-size: 0.8125rem;
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
+}
+
+/* The filename is what the claim was read from, so it carries the weight over the "From" lead. */
+.evidence-list__image {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Also applied to a `<p>` when no level is cited, so nothing here may assume a list. */
+.evidence-list__levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  margin: var(--space-xs) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-list__level {
+  font-variant-numeric: tabular-nums;
+}
+
+.evidence-list__level--missing {
+  color: var(--color-text-muted);
 }
 
 .image-status-list {
@@ -964,6 +1117,17 @@ textarea.field__input {
     color: var(--color-accent-contrast);
     background: var(--color-danger);
   }
+}
+
+/* Pressed matches each control's hover fill, so the label stays legible without a hover state. */
+.history-item__open:active {
+  background: var(--color-surface-alt);
+  border-color: var(--color-accent);
+}
+
+.history-item__delete:active {
+  color: var(--color-accent-contrast);
+  background: var(--color-danger);
 }
 
 .empty-state {
