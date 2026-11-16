@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ES 5-minute footprint</title>
+<style>
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #ffffff;
+    color: #111111;
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+
+  .page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+  }
+
+  .band {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: clamp(12px, 2vw, 40px);
+    padding-block: clamp(12px, 1vw, 28px);
+    padding-inline: clamp(16px, 1vw, 40px);
+    background: #f7f7f5;
+    border-block-end: 2px solid #d6d6d0;
+  }
+
+  .title {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: clamp(10px, 1vw, 24px);
+    font-size: clamp(15px, 1vw, 26px);
+    font-weight: 700;
+    color: #111111;
+  }
+
+  .sym {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(20px, 1vw, 38px);
+    letter-spacing: 1px;
+    color: #111111;
+  }
+
+  .sub {
+    font-size: clamp(14px, 1vw, 26px);
+    font-weight: 600;
+    color: #2b2b2b;
+  }
+
+  .readout {
+    margin: 0;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(16px, 1vw, 32px);
+    font-weight: 700;
+    color: #111111;
+    background: #ffffff;
+    border: 2px solid #111111;
+    border-radius: 8px;
+    padding-block: clamp(4px, 1vw, 10px);
+    padding-inline: clamp(10px, 1vw, 22px);
+  }
+
+  .chart {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1vw, 18px);
+    padding-block: clamp(10px, 1vw, 22px);
+    padding-inline: clamp(14px, 1vw, 32px);
+  }
+
+  .chart-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: clamp(13px, 1vw, 22px);
+    font-weight: 600;
+    color: #555555;
+  }
+
+  .grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 7fr repeat(12, 4fr);
+    grid-template-rows: repeat(6, 1fr);
+    gap: 1px;
+    background: #b3bfcc;
+    border: 2px solid #b3bfcc;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .row {
+    display: contents;
+  }
+
+  .axis {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding-inline: clamp(8px, 1vw, 18px);
+    background: #eef2f7;
+    border-inline-start: 5px solid #7b8fa6;
+  }
+
+  .px {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(16px, 1vw, 26px);
+    font-weight: 700;
+    color: #111111;
+  }
+
+  .tag {
+    font-size: clamp(13px, 1vw, 18px);
+    font-weight: 600;
+    color: #4a4a4a;
+  }
+
+  .cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eef2f7;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(13px, 1vw, 22px);
+    font-weight: 600;
+    color: #222222;
+  }
+
+  .poc {
+    background: #dbe6f4;
+  }
+
+  .cell.poc {
+    font-weight: 800;
+  }
+
+  .imb {
+    background: #ffe6ae;
+    color: #111111;
+    font-weight: 800;
+    box-shadow: inset 0 0 0 3px #b45309;
+  }
+
+  .col-end {
+    background: #e2eaf5;
+  }
+
+  .last {
+    flex-direction: column;
+    gap: 2px;
+    background: #0f172a;
+    color: #ffffff;
+  }
+
+  .vol {
+    font-size: clamp(13px, 1vw, 22px);
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .last-tag {
+    font-size: clamp(13px, 1vw, 20px);
+    font-weight: 800;
+    color: #fbbf24;
+  }
+
+  .last-px {
+    font-size: clamp(15px, 1vw, 26px);
+    font-weight: 800;
+    color: #ffffff;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="band">
+      <h1 class="title"><span class="sym">ES</span><span class="sub">5-minute footprint</span></h1>
+      <p class="readout">Last 5844.25</p>
+    </header>
+    <main class="chart">
+      <div class="chart-head"><span>Bid × Ask volume by price</span></div>
+      <div class="grid" role="table" aria-label="ES 5-minute footprint chart, bid and ask volume at each price">
+        <div class="row" role="row">
+          <div class="axis" role="rowheader"><span class="px">5845.00</span><span class="tag">Value area high</span></div>
+          <div class="cell" role="cell">12×9</div>
+          <div class="cell" role="cell">7×5</div>
+          <div class="cell" role="cell">4×3</div>
+          <div class="cell" role="cell">6×4</div>
+          <div class="cell" role="cell">9×7</div>
+          <div class="cell" role="cell">5×4</div>
+          <div class="cell" role="cell">11×8</div>
+          <div class="cell" role="cell">8×6</div>
+          <div class="cell" role="cell">13×10</div>
+          <div class="cell" role="cell">16×12</div>
+          <div class="cell" role="cell">19×15</div>
+          <div class="cell col-end" role="cell">21×17</div>
+        </div>
+        <div class="row" role="row">
+          <div class="axis" role="rowheader"><span class="px">5844.25</span><span class="tag">Last</span></div>
+          <div class="cell" role="cell">48×61</div>
+          <div class="cell" role="cell">35×52</div>
+          <div class="cell" role="cell">28×44</div>
+          <div class="cell" role="cell">40×58</div>
+          <div class="cell" role="cell">52×71</div>
+          <div class="cell" role="cell">46×63</div>
+          <div class="cell" role="cell">58×76</div>
+          <div class="cell" role="cell">62×84</div>
+          <div class="cell" role="cell">74×92</div>
+          <div class="cell" role="cell">88×106</div>
+          <div class="cell" role="cell">96×118</div>
+          <div class="cell last" role="cell"><span class="vol">186×241</span><span class="last-tag">Last</span><span class="last-px">5844.25</span></div>
+        </div>
+        <div class="row" role="row">
+          <div class="axis poc" role="rowheader"><span class="px">5843.50</span><span class="tag">POC</span></div>
+          <div class="cell poc" role="cell">96×120</div>
+          <div class="cell poc" role="cell">112×138</div>
+          <div class="cell poc" role="cell">128×151</div>
+          <div class="cell poc" role="cell">142×166</div>
+          <div class="cell poc" role="cell">136×149</div>
+          <div class="cell poc" role="cell">124×140</div>
+          <div class="cell poc" role="cell">132×147</div>
+          <div class="cell poc" role="cell">148×171</div>
+          <div class="cell poc" role="cell">156×182</div>
+          <div class="cell poc" role="cell">162×188</div>
+          <div class="cell poc" role="cell">154×176</div>
+          <div class="cell poc col-end" role="cell">148×169</div>
+        </div>
+        <div class="row" role="row">
+          <div class="axis" role="rowheader"><span class="px">5842.75</span><span class="tag">Imbalance</span></div>
+          <div class="cell" role="cell">64×41</div>
+          <div class="cell" role="cell">58×73</div>
+          <div class="cell" role="cell">74×66</div>
+          <div class="cell" role="cell">88×95</div>
+          <div class="cell" role="cell">102×118</div>
+          <div class="cell imb" role="cell">158×61</div>
+          <div class="cell" role="cell">96×104</div>
+          <div class="cell" role="cell">90×99</div>
+          <div class="cell" role="cell">84×93</div>
+          <div class="cell" role="cell">78×87</div>
+          <div class="cell" role="cell">72×81</div>
+          <div class="cell col-end" role="cell">68×77</div>
+        </div>
+        <div class="row" role="row">
+          <div class="axis" role="rowheader"><span class="px">5842.00</span></div>
+          <div class="cell" role="cell">22×18</div>
+          <div class="cell" role="cell">30×24</div>
+          <div class="cell" role="cell">26×33</div>
+          <div class="cell" role="cell">34×29</div>
+          <div class="cell" role="cell">44×37</div>
+          <div class="cell" role="cell">38×31</div>
+          <div class="cell" role="cell">42×36</div>
+          <div class="cell" role="cell">40×34</div>
+          <div class="cell" role="cell">46×39</div>
+          <div class="cell" role="cell">52×44</div>
+          <div class="cell" role="cell">58×49</div>
+          <div class="cell col-end" role="cell">54×46</div>
+        </div>
+        <div class="row" role="row">
+          <div class="axis" role="rowheader"><span class="px">5841.25</span><span class="tag">Value area low</span></div>
+          <div class="cell" role="cell">8×6</div>
+          <div class="cell" role="cell">11×9</div>
+          <div class="cell" role="cell">14×11</div>
+          <div class="cell" role="cell">12×8</div>
+          <div class="cell" role="cell">16×13</div>
+          <div class="cell" role="cell">10×7</div>
+          <div class="cell" role="cell">18×14</div>
+          <div class="cell" role="cell">15×12</div>
+          <div class="cell" role="cell">20×16</div>
+          <div class="cell" role="cell">24×19</div>
+          <div class="cell" role="cell">28×22</div>
+          <div class="cell col-end" role="cell">31×25</div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

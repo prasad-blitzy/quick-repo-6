@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ES Volume profile</title>
+    <!-- Fixture contract: the only prices printed are 5836.00 (value area low), 5843.00 (POC) and
+         5847.00 (value area high, also the current price). Every other row shows just a dash and no
+         price, and bar widths stay whole percentages, so the rendered image agrees
+         character-for-character with the recorded extraction answer. -->
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      body {
+        background: #f7f8f9;
+        color: #111;
+        font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+        font-size: clamp(13px, 1.1vw, 18px);
+        line-height: 1.2;
+      }
+
+      .app {
+        display: flex;
+        flex-direction: column;
+        block-size: 100%;
+        inline-size: 100%;
+      }
+
+      .band {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 18px;
+        background: #ffffff;
+        border-block-end: 1px solid #d8dde3;
+      }
+
+      .title {
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: baseline;
+        gap: 10px;
+        font-size: clamp(15px, 1.5vw, 22px);
+        font-weight: 600;
+        color: #111;
+      }
+
+      .symbol {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-weight: 700;
+        letter-spacing: 1px;
+      }
+
+      .title-text {
+        font-weight: 500;
+        color: #333;
+      }
+
+      .legend {
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        font-size: clamp(13px, 0.9vw, 15px);
+        color: #666;
+      }
+
+      .legend-swatch {
+        display: block;
+        inline-size: 22px;
+        block-size: 12px;
+        background: #e7eef7;
+        border: 1px solid #cfd9e4;
+      }
+
+      .readout {
+        margin: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .readout-label {
+        font-size: clamp(13px, 0.9vw, 15px);
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #666;
+      }
+
+      .readout-value {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: clamp(15px, 1.4vw, 20px);
+        font-weight: 700;
+        color: #111;
+      }
+
+      .body {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: row;
+        min-block-size: 0;
+      }
+
+      .profile {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-inline-size: 0;
+      }
+
+      .axis {
+        flex: 0 0 18%;
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        border-inline-start: 1px solid #d8dde3;
+      }
+
+      .track-row {
+        position: relative;
+        flex: 1 1 0;
+        min-block-size: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-end;
+        padding-inline-end: 4px;
+        background: #f7f8f9;
+      }
+
+      .track-row.va {
+        background: #eef3f9;
+      }
+
+      .track-row.poc {
+        background: #dde8f5;
+      }
+
+      .bar {
+        block-size: 62%;
+        background: #848c93;
+      }
+
+      .track-row.va .bar {
+        background: #6f8dae;
+      }
+
+      .track-row.poc .bar {
+        background: #3f648c;
+      }
+
+      .marker {
+        position: absolute;
+        inset-block-start: 50%;
+        inset-inline: 0;
+        block-size: 0;
+        border-block-start: 2px solid #6b1b0f;
+        z-index: 1;
+      }
+
+      .axis-row {
+        flex: 1 1 0;
+        min-block-size: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 1px;
+        padding-inline: 12px;
+        overflow: hidden;
+      }
+
+      .axis-row.va {
+        background: #eef3f9;
+      }
+
+      .axis-row.poc {
+        background: #dde8f5;
+      }
+
+      .axis-price {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: clamp(13px, 1.1vw, 17px);
+        font-weight: 600;
+        color: #111;
+      }
+
+      .axis-caption {
+        font-size: clamp(13px, 0.9vw, 15px);
+        color: #666;
+      }
+
+      .axis-caption.is-current {
+        font-weight: 600;
+        color: #6b1b0f;
+      }
+
+      .axis-dash {
+        font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        font-size: clamp(13px, 1.1vw, 17px);
+        color: #5f6772;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header class="band">
+        <h1 class="title"><span class="symbol">ES</span> <span class="title-text">Volume profile</span></h1>
+        <p class="legend"><span class="legend-swatch"></span><span>Value area</span></p>
+        <p class="readout"><span class="readout-label">Last</span> <span class="readout-value">5847.00</span></p>
+      </header>
+      <div class="body">
+        <section class="profile" aria-label="Volume by price row">
+          <div class="track-row"><div class="bar" style="width: 7%"></div></div>
+          <div class="track-row"><div class="bar" style="width: 13%"></div></div>
+          <div class="track-row"><div class="bar" style="width: 21%"></div></div>
+          <div class="track-row va current"><div class="marker"></div><div class="bar" style="width: 46%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 58%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 69%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 80%"></div></div>
+          <div class="track-row va poc"><div class="bar" style="width: 97%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 88%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 75%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 62%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 53%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 44%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 35%"></div></div>
+          <div class="track-row va"><div class="bar" style="width: 27%"></div></div>
+        </section>
+        <aside class="axis" aria-label="Price axis">
+          <div class="axis-row"><span class="axis-dash">-</span></div>
+          <div class="axis-row"><span class="axis-dash">-</span></div>
+          <div class="axis-row"><span class="axis-dash">-</span></div>
+          <div class="axis-row va current">
+            <span class="axis-price">5847.00</span>
+            <span class="axis-caption">Value area high</span>
+            <span class="axis-caption is-current">Current price</span>
+          </div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va poc">
+            <span class="axis-price">5843.00</span>
+            <span class="axis-caption">POC</span>
+          </div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va"><span class="axis-dash">-</span></div>
+          <div class="axis-row va">
+            <span class="axis-price">5836.00</span>
+            <span class="axis-caption">Value area low</span>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

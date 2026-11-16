@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ES depth of market ladder</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+
+  body {
+    background: #eef0f3;
+    color: #111;
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    font-size: clamp(13px, 1vw, 18px);
+    line-height: 1;
+  }
+
+  .page { display: flex; flex-direction: column; height: 100%; }
+
+  /* Header band: instrument, surface name, and the price the ladder is quoted at. */
+  .top {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 16px 32px;
+    background: #ffffff;
+    border-bottom: 2px solid #d3d8de;
+  }
+
+  .title {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin: 0;
+    font-weight: 400;
+  }
+
+  .sym {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(20px, 2vw, 40px);
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .surface {
+    font-size: clamp(13px, 1vw, 20px);
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #4a4f56;
+  }
+
+  .last {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 20px;
+    border: 1px solid #c7ced6;
+    border-radius: 6px;
+    background: #eef1f5;
+  }
+
+  .last-label {
+    font-size: clamp(13px, 1vw, 17px);
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #5b6068;
+  }
+
+  .last-value {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: clamp(20px, 2vw, 34px);
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #111;
+  }
+
+  .ladder { flex: 1; min-height: 0; overflow: hidden; background: #ffffff; }
+
+  .book { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+
+  .c-bid-size { width: 14%; }
+  .c-bid { width: 14%; }
+  .c-price { width: 20%; }
+  .c-ask { width: 14%; }
+  .c-ask-size { width: 14%; }
+  .c-note { width: 24%; }
+
+  .book thead th {
+    padding: 12px 24px;
+    font-size: clamp(13px, 1vw, 16px);
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #55595f;
+    background: #f4f6f8;
+    border-bottom: 1px solid #d3d8de;
+  }
+
+  .book td {
+    padding: 8px 24px;
+    border-bottom: 1px solid #eceff2;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .right { text-align: right; }
+  .left { text-align: left; }
+  .center { text-align: center; }
+
+  .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+
+  .size {
+    font-size: clamp(13px, 1vw, 18px);
+    color: #2b2f35;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Unquoted side: a dash, never a price outside the printed levels. */
+  .unprinted {
+    font-size: clamp(13px, 1vw, 18px);
+    color: #6b7078;
+  }
+
+  .price {
+    font-size: clamp(16px, 2vw, 30px);
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #111;
+  }
+
+  .price-quiet {
+    font-size: clamp(16px, 2vw, 30px);
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #6b7078;
+  }
+
+  .note {
+    font-size: clamp(13px, 1vw, 17px);
+    letter-spacing: 1px;
+    color: #666;
+  }
+
+  /* Held inventory at the absorbed level. */
+  .rung-absorbed td { background: #dfe8f4; }
+
+  .rung-absorbed .price { color: #0c2c56; }
+
+  .tag {
+    display: inline-block;
+    margin-inline-end: 12px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: #111;
+    color: #ffffff;
+    font-size: clamp(13px, 1vw, 15px);
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .note-absorbed {
+    color: #111;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .tick {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-inline-end: 12px;
+    border-radius: 50%;
+    background: #b3491c;
+    vertical-align: middle;
+  }
+
+  /* The thin gap: an empty band that still reads as a rung of the ladder. */
+  .rung-void td {
+    background: #ffffff;
+    border-top: 1px dashed #c7ced6;
+    border-bottom: 1px dashed #c7ced6;
+  }
+
+  .rung-void .size { color: #6b7078; }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1 class="title"><span class="sym">ES</span><span class="surface">Depth of market</span></h1>
+    <div class="last"><span class="last-label">Last</span><span class="last-value">5840.00</span></div>
+  </header>
+
+  <main class="ladder">
+    <table class="book">
+      <caption class="sr-only">ES depth of market ladder with bid and ask size on either side of each printed price level</caption>
+      <colgroup>
+        <col class="c-bid-size">
+        <col class="c-bid">
+        <col class="c-price">
+        <col class="c-ask">
+        <col class="c-ask-size">
+        <col class="c-note">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col" class="right">Bid size</th>
+          <th scope="col" class="right">Bid</th>
+          <th scope="col" class="center">Price</th>
+          <th scope="col" class="left">Ask</th>
+          <th scope="col" class="left">Ask size</th>
+          <th scope="col" class="left">Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="rung">
+          <td class="right mono size">34</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">61</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">118</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">42</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">27</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">96</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">63</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">18</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">12</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">74</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">186</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono price">5845.00</td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">94</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung-absorbed">
+          <td class="right mono size">412</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono price"><span class="tick" aria-hidden="true"></span>5840.00</td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">128</td>
+          <td class="left note"><span class="tag">Last traded</span><span class="note-absorbed">Absorbed</span></td>
+        </tr>
+        <tr class="rung-void">
+          <td class="right mono size">0</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono price-quiet">5838.00</td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">0</td>
+          <td class="left note">Liquidity void</td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">64</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono price">5835.00</td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">231</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">45</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">33</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">88</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">57</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">21</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">65</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">52</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">29</td>
+          <td class="left"></td>
+        </tr>
+        <tr class="rung">
+          <td class="right mono size">74</td>
+          <td class="right mono unprinted">&mdash;</td>
+          <td class="center mono"></td>
+          <td class="left mono unprinted">&mdash;</td>
+          <td class="left mono size">47</td>
+          <td class="left"></td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+</body>
+</html>
