@@ -7,7 +7,8 @@
  * What may never reach a log line, in a field:
  * - the model credential (or a prefix of it) and an `Authorization` header;
  * - a request body or an outgoing provider request payload;
- * - image bytes, a `Buffer`/`Uint8Array`, or a `data:<mime>;base64,` string.
+ * - image bytes, a `Buffer`/`Uint8Array`, or base64 of them, bare or under a
+ *   `data:<mime>;base64,` prefix.
  *
  * The one line that carries provider error text is the conformance failure, whose raw
  * answer text travels in `message` only. `message` must never be given the request
@@ -15,8 +16,14 @@
  * pass below is defence in depth, not permission to pass them.
  */
 
-/** Severity of one log line. `duration()` logs at `'info'`. */
-export type LogLevel = 'info' | 'error';
+/**
+ * Severity of one log line, from least to most severe.
+ *
+ * `'warn'` is the level for an event worth an operator's attention that is not a failure:
+ * the single silent conformance retry, a recommendation downgraded by a domain rule, or a
+ * timing correction. `duration()` logs at `'info'`.
+ */
+export type LogLevel = 'info' | 'warn' | 'error';
 
 /**
  * The complete, closed set of fields one log line may carry.
@@ -61,9 +68,11 @@ export interface LogEvent {
   message?: string;
 }
 
-/** The three emission points every caller uses. All synchronous, all `void`. */
+/** The four emission points every caller uses. All synchronous, all `void`. */
 export interface Logger {
   info(event: LogEvent): void;
+  /** Emits at level `warn`: an event worth an operator's attention that is not a failure. */
+  warn(event: LogEvent): void;
   error(event: LogEvent): void;
   /** Emits at level `info` with `durationMs` measured from `startedAt`. */
   duration(event: LogEvent, startedAt: number): void;
@@ -81,6 +90,11 @@ export interface CreateLoggerOptions {
  * The closed field set in canonical serialisation order: `event` first, then every
  * optional field in declaration order. Serialisation reads only these keys, so a key a
  * caller injects at runtime cannot be emitted even when the type system is bypassed.
+ *
+ * The compiler holds this list and `LogEvent` together in both directions rather than
+ * leaving the pairing to a deliberate hand edit: `satisfies` rejects a key that is not a
+ * field of the interface, and `LogEventKeysAreComplete` below stops compiling while a
+ * field exists that this list omits.
  */
 const LOG_EVENT_KEYS = [
   'event',
@@ -97,15 +111,41 @@ const LOG_EVENT_KEYS = [
   'outcome',
   'reason',
   'message',
-] as const;
+] as const satisfies readonly (keyof LogEvent)[];
 
 type LogEventKey = (typeof LOG_EVENT_KEYS)[number];
+
+/** Holds only for `never`: the shape a completeness check needs and no runtime meaning. */
+type AssertComplete<Missing extends never> = Missing;
+
+/**
+ * Compiles exactly while `LOG_EVENT_KEYS` names every field of `LogEvent`. The `Exclude`
+ * is `never` in that state; a field added to the interface alone leaves a name in it, the
+ * `never` constraint on `AssertComplete` rejects that argument, and the error points here
+ * rather than surfacing as a field that silently never reaches a line.
+ *
+ * Exported because an unused local alias is reported under `noUnusedLocals` while an
+ * exported one is not, and this alias exists to be checked rather than called.
+ */
+export type LogEventKeysAreComplete = AssertComplete<Exclude<keyof LogEvent, LogEventKey>>;
 
 /** A credential issued by the model gateway. */
 const CREDENTIAL_PATTERN = /sk-or-[A-Za-z0-9._-]+/g;
 
 /** An inline base64 payload, which is how image bytes would appear in text. */
 const INLINE_BASE64_PATTERN = /data:[A-Za-z0-9.+-]+\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g;
+
+/**
+ * A bare base64 run with no `data:` prefix: the payload on its own, which is how image
+ * bytes appear once a caller has taken the bytes out of their URI wrapper.
+ *
+ * The floor is 64 characters because that is an order of magnitude longer than any value
+ * this logger is given and far shorter than any image payload worth leaking. An analysis
+ * id is 36 characters and carries hyphens, a model slug carries `/` and `-`, and a
+ * provider answer line carries punctuation and spaces, so none of them can match, while
+ * the 96 characters of base64 that encode a 1x1 PNG are caught.
+ */
+const BARE_BASE64_PATTERN = /[A-Za-z0-9+/]{64,}={0,2}/g;
 
 /** Raw line separators that are valid JSON but split lines in several log readers. */
 const LINE_SEPARATOR_PATTERN = /[\u2028\u2029]/g;
@@ -118,21 +158,36 @@ const TRUNCATION_SUFFIX = '\u2026(truncated)';
 
 const REDACTED = '[redacted]';
 
+/**
+ * The largest absolute millisecond reading a `Date` can represent. Beyond it
+ * `toISOString()` throws `RangeError: Invalid time value`, so a clock that returns one is
+ * treated as unusable rather than allowed to throw out of a log call.
+ */
+const MAX_DATE_MILLISECONDS = 8.64e15;
+
 function escapeLineSeparators(serialised: string): string {
   return serialised.replace(LINE_SEPARATOR_PATTERN, (separator: string): string =>
     separator === '\u2028' ? '\\u2028' : '\\u2029',
   );
 }
 
-/** Replaces credential-shaped and inline-base64 runs, then caps the value if asked to. */
+/**
+ * Replaces credential-shaped and base64-shaped runs, then caps the value if asked to.
+ *
+ * The credential and `data:` URI passes run over the whole value, so a credential is
+ * removed even when it sits past the cap. The bare-base64 pass runs last, over the text
+ * that will actually be emitted, because that heuristic can legitimately match a long
+ * value end to end and would otherwise hide the truncation this function just applied.
+ */
 function redact(value: string, maxLength?: number): string {
-  const cleaned = value
+  const cleansed = value
     .replace(CREDENTIAL_PATTERN, REDACTED)
     .replace(INLINE_BASE64_PATTERN, REDACTED);
-  if (maxLength === undefined || cleaned.length <= maxLength) {
-    return cleaned;
-  }
-  return cleaned.slice(0, maxLength) + TRUNCATION_SUFFIX;
+  const capped =
+    maxLength !== undefined && cleansed.length > maxLength
+      ? cleansed.slice(0, maxLength) + TRUNCATION_SUFFIX
+      : cleansed;
+  return capped.replace(BARE_BASE64_PATTERN, REDACTED);
 }
 
 /**
@@ -147,7 +202,12 @@ function isSerialisableValue(value: unknown): value is string | number | boolean
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-/** Applies the per-field guards: drop unusable values, keep the declared vocabulary. */
+/**
+ * Applies the per-field guards: drop unusable values, keep the declared vocabulary, then
+ * send every string field through the redaction pass. Numbers and booleans are emitted as
+ * given. `message` is the only field capped in length, because it is the only one that
+ * carries a provider's raw answer text.
+ */
 function selectValue(key: LogEventKey, value: unknown): string | number | boolean | undefined {
   if (value === undefined || !isSerialisableValue(value)) {
     return undefined;
@@ -155,13 +215,21 @@ function selectValue(key: LogEventKey, value: unknown): string | number | boolea
   if (key === 'role') {
     return value === 'extraction' || value === 'synthesis' ? value : undefined;
   }
-  if (key === 'message' && typeof value === 'string') {
-    return redact(value, MAX_MESSAGE_LENGTH);
+  if (typeof value !== 'string') {
+    return value;
   }
-  if (key === 'reason' && typeof value === 'string') {
-    return redact(value);
-  }
-  return value;
+  return key === 'message' ? redact(value, MAX_MESSAGE_LENGTH) : redact(value);
+}
+
+/**
+ * Renders `ts` from the injected clock. A reading that is not finite, or that falls
+ * outside the range `Date` can represent, is replaced by the epoch, so no clock can make
+ * a log call throw and turn a completed operation into a failure.
+ */
+function timestampOf(now: () => number): string {
+  const reading = now();
+  const usable = Number.isFinite(reading) && Math.abs(reading) <= MAX_DATE_MILLISECONDS;
+  return new Date(usable ? reading : 0).toISOString();
 }
 
 /**
@@ -170,7 +238,7 @@ function selectValue(key: LogEventKey, value: unknown): string | number | boolea
  */
 function serialise(level: LogLevel, event: LogEvent, now: () => number): string {
   const payload: Record<string, string | number | boolean> = {
-    ts: new Date(now()).toISOString(),
+    ts: timestampOf(now),
     level,
   };
   for (const key of LOG_EVENT_KEYS) {
@@ -199,6 +267,10 @@ export function createLogger(options: CreateLoggerOptions = {}): Logger {
   return {
     info(event: LogEvent): void {
       write(serialise('info', event, now));
+    },
+
+    warn(event: LogEvent): void {
+      write(serialise('warn', event, now));
     },
 
     error(event: LogEvent): void {

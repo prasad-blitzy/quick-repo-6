@@ -104,8 +104,13 @@ export function sanitizeFileName(value: unknown): string {
  * The slug comes from server configuration rather than from a request, so this is defence in
  * depth: it admits only the characters a slug is written with, and it redacts a credential-shaped
  * run, so a key pasted into `OPENROUTER_MODEL` can never reach a response body.
+ *
+ * This is the one renderer for the configured slug. Both operator-facing channels that echo it —
+ * the model-unsupported message composed here and the health route's body — call this function
+ * rather than sanitising a slug of their own, so the two cannot disagree about how a configured
+ * value is rendered.
  */
-function sanitizeSlug(value: unknown): string {
+export function sanitizeSlug(value: unknown): string {
   if (typeof value !== 'string') {
     return '';
   }

@@ -4,6 +4,8 @@ import type { HealthResponse } from '@trade-read/shared';
 
 import type { ServerConfig } from '../config/env.js';
 
+import { sanitizeSlug } from '../domain/errors.js';
+
 /**
  * The health route.
  *
@@ -15,7 +17,9 @@ import type { ServerConfig } from '../config/env.js';
  *
  * The body is the shared `HealthResponse` and carries no field beyond it. The credential, any prefix
  * of it, the provider base URL and every header stay out of the response: the boolean is the only fact
- * the client ever learns about the key.
+ * the client ever learns about the key. The slug is rendered through the one sanitiser the
+ * model-unsupported message also uses, so a configured value carrying a credential, control characters
+ * or markup reaches neither channel with them intact.
  *
  * `app.ts` mounts this router at `API_BASE_PATH`, so the path declared below is relative to that mount
  * point and must never repeat the prefix.
@@ -43,7 +47,7 @@ export function createHealthRouter(deps: HealthRouterDeps): Router {
     const body = {
       status: 'ok',
       providerConfigured: deps.config.providerConfigured,
-      model: deps.config.model,
+      model: sanitizeSlug(deps.config.model),
     } satisfies HealthResponse;
 
     res.status(200).json(body);
