@@ -12,10 +12,28 @@
  * environment setting may influence the built-in instruction text. And there are no authentication
  * variables at all, because this build has no authentication.
  */
-import { resolve as resolvePath } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * The nine environment variables this module reads.
+ *
+ * The set is closed so an override can only name a variable that is actually parsed: a mistyped
+ * name is a compile error instead of a silent fall-through to `process.env`.
+ */
+type EnvironmentVariableName =
+  | 'OPENROUTER_API_KEY'
+  | 'OPENROUTER_MODEL'
+  | 'OPENROUTER_BASE_URL'
+  | 'OPENROUTER_REFERER'
+  | 'OPENROUTER_APP_TITLE'
+  | 'DATA_DIR'
+  | 'PORT'
+  | 'HOST'
+  | 'STUB_PROVIDER';
 
 /** A value set supplied by a caller, which takes precedence over the process environment. */
-type EnvironmentOverrides = Partial<Record<string, string | undefined>>;
+type EnvironmentOverrides = Partial<Record<EnvironmentVariableName, string | undefined>>;
 
 /** Port used when `PORT` is unset, blank, non-integer or outside the valid range. */
 const DEFAULT_PORT = 3001;
@@ -30,10 +48,21 @@ const MAX_PORT = 65535;
 const DEFAULT_HOST = '127.0.0.1';
 
 /**
- * Relative directory, resolved against the process working directory, used when `DATA_DIR` is unset
- * or blank.
+ * Absolute path of the repository this module is installed in, derived from its own URL.
+ *
+ * Both layouts resolve to the same directory, because `server/src/config/env.ts` in the source
+ * tree and `server/dist/config/env.js` in the built tree each sit three levels below the
+ * repository root.
  */
-const DEFAULT_DATA_DIR = '.data';
+const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+
+/**
+ * Absolute directory used when `DATA_DIR` is unset or blank: the repository's own store directory.
+ *
+ * Anchored to the repository rather than to the process working directory, so the store does not
+ * move with the directory the server happens to be started from.
+ */
+const DEFAULT_DATA_DIR = join(REPOSITORY_ROOT, '.data');
 
 /** Vision-capable slug used when `OPENROUTER_MODEL` is unset or blank. */
 const DEFAULT_MODEL = 'google/gemini-2.5-flash';
@@ -50,8 +79,11 @@ const STUB_PROVIDER_ENABLED = '1';
 /**
  * The resolved configuration of the server, assembled once per `loadConfig` call and frozen.
  *
- * Every member names the environment variable it comes from, its default and its effect, because
- * this interface is the documentation of the configuration contract.
+ * Every member names the environment variable it comes from, the constant its default comes from
+ * and its effect, because this interface is the contract between configuration and every module
+ * that reads it. A default that has a constant is declared once, as that constant; a member whose
+ * default is an absence states it inline; and the values an operator sets, with what each one does,
+ * are documented in `.env.example`.
  */
 export interface ServerConfig {
   /**
@@ -63,10 +95,11 @@ export interface ServerConfig {
   readonly openRouterApiKey: string | null;
 
   /**
-   * `OPENROUTER_BASE_URL`; default `https://openrouter.ai/api/v1`.
+   * `OPENROUTER_BASE_URL`; default `DEFAULT_OPEN_ROUTER_BASE_URL`.
    *
-   * Stored exactly as configured: the provider adapter composes the request path, so no trailing
-   * slash is stripped and no path is appended here.
+   * Stored without trailing slashes, so the provider adapter can always append `/chat/completions`
+   * and compose exactly one separator whatever form the configured base took. A value made of
+   * nothing but slashes carries no base at all and falls back to the default.
    */
   readonly openRouterBaseUrl: string;
 
@@ -85,7 +118,7 @@ export interface ServerConfig {
   readonly openRouterAppTitle: string | null;
 
   /**
-   * `OPENROUTER_MODEL`; default `google/gemini-2.5-flash`.
+   * `OPENROUTER_MODEL`; default `DEFAULT_MODEL`.
    *
    * The one vision-capable slug used for both the extraction and the synthesis call, and the value
    * `GET /api/v1/health` reports.
@@ -93,15 +126,18 @@ export interface ServerConfig {
   readonly model: string;
 
   /**
-   * `DATA_DIR`; default `.data`, always resolved to an absolute path.
+   * `DATA_DIR`; default `DEFAULT_DATA_DIR`, always resolved to an absolute path.
    *
-   * Where analysis documents and their image bytes are written. The default sits outside version
-   * control.
+   * Where analysis documents and their image bytes are written, outside version control. An
+   * explicit value stays authoritative — an absolute path is used as given and a relative one is
+   * resolved against the process working directory — so an operator or a test can point the store
+   * anywhere. Unset or blank, the default applies: the repository's own store directory, whatever
+   * directory the server is started from.
    */
   readonly dataDir: string;
 
   /**
-   * `PORT`; default `3001`.
+   * `PORT`; default `DEFAULT_PORT`.
    *
    * Accepted from `0` to `65535` inclusive, where `0` asks the operating system for an ephemeral
    * port. Any unparseable or out-of-range value falls back to the default instead of failing the
@@ -110,7 +146,7 @@ export interface ServerConfig {
   readonly port: number;
 
   /**
-   * `HOST`; default `127.0.0.1`.
+   * `HOST`; default `DEFAULT_HOST`.
    *
    * The bind address. The loopback default is a compensating control rather than an accident: the
    * API is unauthenticated, so it is reachable from the local machine only unless a deployment sets
@@ -141,13 +177,17 @@ export interface ServerConfig {
  * An override present as an own property wins outright, including an explicit `undefined`, which
  * asks for the variable to be treated as unset. Only an override that is absent entirely falls
  * through to `process.env`, which is what lets a test pin the configuration while the developer's
- * shell exports real values.
+ * shell exports real values. The name is one of the nine variables this module parses, so no
+ * override can reach a variable it does not read.
  *
  * @param overrides - Values that take precedence over the process environment.
  * @param name - The environment variable to resolve.
  * @returns The untrimmed value, or `undefined` when the variable is unset.
  */
-function readRawValue(overrides: EnvironmentOverrides | undefined, name: string): string | undefined {
+function readRawValue(
+  overrides: EnvironmentOverrides | undefined,
+  name: EnvironmentVariableName,
+): string | undefined {
   if (overrides !== undefined && Object.prototype.hasOwnProperty.call(overrides, name)) {
     return overrides[name];
   }
@@ -162,7 +202,10 @@ function readRawValue(overrides: EnvironmentOverrides | undefined, name: string)
  * @param name - The environment variable to resolve.
  * @returns The trimmed value, or `undefined` when the variable is unset or blank.
  */
-function readText(overrides: EnvironmentOverrides | undefined, name: string): string | undefined {
+function readText(
+  overrides: EnvironmentOverrides | undefined,
+  name: EnvironmentVariableName,
+): string | undefined {
   const raw = readRawValue(overrides, name);
 
   if (raw === undefined) {
@@ -184,10 +227,34 @@ function readText(overrides: EnvironmentOverrides | undefined, name: string): st
  */
 function readTextOrDefault(
   overrides: EnvironmentOverrides | undefined,
-  name: string,
+  name: EnvironmentVariableName,
   fallback: string,
 ): string {
   return readText(overrides, name) ?? fallback;
+}
+
+/**
+ * Resolve `OPENROUTER_BASE_URL` as a base that ends in no slash.
+ *
+ * The provider adapter appends `/chat/completions` to this value, so a configured base that ends in
+ * one or more slashes is normalised here rather than composing a doubled separator on every call. A
+ * value of nothing but slashes carries no base at all and falls back to the default.
+ *
+ * @param overrides - Values that take precedence over the process environment.
+ * @returns The base URL with no trailing slash, ready for the request path to be appended.
+ */
+function readOpenRouterBaseUrl(overrides: EnvironmentOverrides | undefined): string {
+  const configured = readText(overrides, 'OPENROUTER_BASE_URL');
+
+  if (configured === undefined) {
+    return DEFAULT_OPEN_ROUTER_BASE_URL;
+  }
+
+  const withoutTrailingSlashes = configured.replace(/\/+$/u, '');
+
+  return withoutTrailingSlashes.length === 0
+    ? DEFAULT_OPEN_ROUTER_BASE_URL
+    : withoutTrailingSlashes;
 }
 
 /**
@@ -198,7 +265,8 @@ function readTextOrDefault(
  * server must start without any working configuration.
  *
  * @param overrides - Values that take precedence over the process environment.
- * @returns The port, or `3001`.
+ * @returns The port, or `DEFAULT_PORT` when the variable is unset, blank, non-integer or outside
+ *   the accepted range.
  */
 function readPort(overrides: EnvironmentOverrides | undefined): number {
   const raw = readText(overrides, 'PORT');
@@ -242,11 +310,7 @@ export function loadConfig(overrides?: EnvironmentOverrides): ServerConfig {
 
   const config: ServerConfig = {
     openRouterApiKey,
-    openRouterBaseUrl: readTextOrDefault(
-      overrides,
-      'OPENROUTER_BASE_URL',
-      DEFAULT_OPEN_ROUTER_BASE_URL,
-    ),
+    openRouterBaseUrl: readOpenRouterBaseUrl(overrides),
     openRouterReferer: readText(overrides, 'OPENROUTER_REFERER') ?? null,
     openRouterAppTitle: readText(overrides, 'OPENROUTER_APP_TITLE') ?? null,
     model: readTextOrDefault(overrides, 'OPENROUTER_MODEL', DEFAULT_MODEL),
