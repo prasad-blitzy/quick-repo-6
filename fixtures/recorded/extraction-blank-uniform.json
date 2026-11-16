@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-extraction-blank-uniform",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"l\":[],\"o\":\"LAST=NA no chart content in frame\",\"r\":\"BLANK\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1103,
+    "completion_tokens": 24,
+    "total_tokens": 1127
+  }
+}
