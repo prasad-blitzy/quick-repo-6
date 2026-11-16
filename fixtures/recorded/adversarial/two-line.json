@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-adversarial-two-line",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"s\":\"LONG\",\"t\":\"RETEST\",\"e\":5842.75,\"x\":5840.00,\n\"k\":[5845.00,5900.00],\"c\":\"M\",\"src\":[\"IMAGE_1\",\"IMAGE_2\"],\"w\":\"Retest long from the footprint imbalance, invalidated at the positive-gamma strike, targeting the call wall.\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 639,
+    "completion_tokens": 98,
+    "total_tokens": 737
+  }
+}
