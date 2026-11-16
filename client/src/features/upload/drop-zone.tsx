@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from "react";
-import type { ChangeEvent, DragEvent, KeyboardEvent, MouseEvent } from "react";
+import { useCallback, useRef, useState } from 'react';
+import type { ChangeEvent, DragEvent, KeyboardEvent, MouseEvent } from 'react';
 
-import { ACCEPTED_IMAGE_MIME_TYPES } from "@trade-read/shared";
+import { ACCEPTED_IMAGE_MIME_TYPES } from '@trade-read/shared';
 
 /**
  * The drop target and the file picker are two equal ways into the same queue: the zone is a
@@ -20,7 +20,7 @@ export interface DropZoneProps {
 const ZONE_LABEL =
   "Add chart screenshots: drop files here, or press Enter or Space to choose files.";
 
-export default function DropZone({ onFiles, disabled = false }: DropZoneProps) {
+export function DropZone({ onFiles, disabled = false }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   /**
    * Counts the dragenter/dragleave pairs one drag produces while it crosses this zone's child

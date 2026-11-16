@@ -1,11 +1,13 @@
 /**
- * Browser-side image preparation for the upload queue: decode, downscale and re-encode.
+ * Browser-side image preparation for the upload queue: decode, downscale past the long-edge bound
+ * and re-encode only what the bound or a content-type conversion changed.
  *
  * Downscaling is a courtesy, not the control. It keeps a capture's token cost independent of the
  * resolution it was taken at, while the dimension bound is enforced by the server, which re-reads
  * the dimensions from the received bytes. So this module never discards a file the server would
  * accept: a file that cannot be decoded here is reported to the caller as a plain rejection for
- * that one file, and a file that decodes is always returned resized rather than refused.
+ * that one file, and a file that decodes is always returned, resized only where the bound
+ * required it.
  *
  * The blank-frame check is advisory only. A uniformly coloured image is still queued and still
  * submitted; whether an image is readable is decided by the extraction outcome on the server, and
@@ -19,9 +21,9 @@ import {
   ACCEPTED_IMAGE_MIME_TYPES,
   MAX_LONG_EDGE_PX,
   type AcceptedImageMimeType,
-} from "@trade-read/shared";
+} from '@trade-read/shared';
 
-/** The size an image is drawn and re-encoded at. */
+/** The size a decoded image is drawn at before upload. */
 export interface TargetSize {
   width: number;
   height: number;
@@ -153,7 +155,9 @@ function encodeCanvas(
 }
 
 /**
- * Decodes one queued file, downscales it within the long-edge bound and re-encodes it for upload.
+ * Decodes one queued file and prepares it for upload. An image the long-edge bound has nothing to
+ * trim, and that already carries a type the server accepts, is returned as it arrived; every other
+ * file is drawn at the computed size and re-encoded.
  *
  * Rejects only for a file this browser cannot decode or re-encode, which the caller reports
  * against that one file while the rest of the queue stands. The decoded bitmap is released on
@@ -178,8 +182,20 @@ export async function downscaleImage(file: File): Promise<DownscaledImage> {
     context.drawImage(bitmap, 0, 0, target.width, target.height);
 
     // Read from the pixels that will be uploaded rather than from the source, and before the
-    // re-encode, so the note describes the bytes the server will actually receive.
+    // re-encode, so the note describes the frame the server will actually receive — for an image
+    // drawn 1:1, those pixels are the file's own.
     const blankFrame = isBlankFrame(context.getImageData(0, 0, target.width, target.height).data);
+
+    // Nothing to trim and no content type to convert: the file is uploaded exactly as it arrived,
+    // because re-encoding it at its own size would cost JPEG and WebP a further lossy generation
+    // and save neither a pixel nor a token.
+    if (
+      isAcceptedImageMimeType(file.type) &&
+      target.width === bitmap.width &&
+      target.height === bitmap.height
+    ) {
+      return { blob: file, width: target.width, height: target.height, blankFrame };
+    }
 
     const encodeType = isAcceptedImageMimeType(file.type) ? file.type : LOSSLESS_ENCODE_TYPE;
     const quality = encodeType === LOSSLESS_ENCODE_TYPE ? undefined : LOSSY_ENCODE_QUALITY;

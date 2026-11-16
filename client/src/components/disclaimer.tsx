@@ -7,7 +7,7 @@ import { DISCLAIMER } from '@trade-read/shared';
  * keeps the persisted analysis document and the interface in agreement. The element carries no
  * other content, so its text is exactly the shared constant.
  */
-export default function Disclaimer() {
+export function Disclaimer() {
   return (
     <p className="disclaimer" role="note">
       {DISCLAIMER}
