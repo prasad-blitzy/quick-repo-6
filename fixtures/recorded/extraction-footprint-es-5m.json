@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-extraction-footprint-es-5m",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"l\":[[5841.25,\"VAL\"],[5842.00,\"OTH\"],[5842.75,\"IMB\"],[5843.50,\"POC\"],[5844.25,\"OTH\"],[5845.00,\"VAH\"]],\"o\":\"LAST=5844.25 value area intact on final bar\",\"r\":\"OK\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1187,
+    "completion_tokens": 104,
+    "total_tokens": 1291
+  }
+}
