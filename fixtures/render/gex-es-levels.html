@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ES GEX levels</title>
+<style>
+  :root {
+    --ink: #111;
+    --muted: #666;
+    --rule: #d6dbe4;
+    --paper: #fff;
+    --tint: #eef4ff;
+    --tint-edge: #9fb4d8;
+    --pos: #2f6f3e;
+    --neg: #a33b2e;
+    --bar: #9fb4d8;
+    --bar-track: #eef1f6;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+
+  .ladder {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    padding: 28px 40px 20px;
+    gap: 16px;
+  }
+
+  .band {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 14px;
+    border-bottom: 2px solid var(--rule);
+  }
+
+  .title {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+
+  .title h1 {
+    margin: 0;
+    font-size: clamp(26px, 2.4vw, 40px);
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .title .subtitle {
+    margin: 0;
+    font-size: clamp(14px, 1vw, 18px);
+    color: var(--muted);
+  }
+
+  .spot {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .spot-label {
+    font-size: clamp(13px, 1vw, 18px);
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .spot-value {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(24px, 2.2vw, 36px);
+    font-weight: 700;
+  }
+
+  .table-region {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+
+  table {
+    width: 100%;
+    height: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: clamp(14px, 1.1vw, 19px);
+  }
+
+  col.c-strike {
+    width: 22%;
+  }
+
+  col.c-gamma {
+    width: 26%;
+  }
+
+  col.c-oi {
+    width: 20%;
+  }
+
+  col.c-level {
+    width: 32%;
+  }
+
+  thead th {
+    text-align: right;
+    font-size: clamp(13px, 1vw, 17px);
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 18px;
+    border-bottom: 2px solid var(--rule);
+  }
+
+  thead th.c-level {
+    text-align: left;
+  }
+
+  tbody th,
+  tbody td {
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: middle;
+  }
+
+  tbody tr:last-child th,
+  tbody tr:last-child td {
+    border-bottom: 2px solid var(--rule);
+  }
+
+  .strike,
+  .gamma,
+  .oi {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .strike {
+    font-size: clamp(18px, 1.6vw, 26px);
+    font-weight: 700;
+  }
+
+  .gamma {
+    font-size: clamp(15px, 1.2vw, 21px);
+    font-weight: 600;
+  }
+
+  .oi {
+    color: var(--ink);
+  }
+
+  .level {
+    text-align: left;
+    font-size: clamp(14px, 1vw, 18px);
+  }
+
+  .pos {
+    color: var(--pos);
+  }
+
+  .neg {
+    color: var(--neg);
+  }
+
+  .flat {
+    color: var(--muted);
+  }
+
+  .bar {
+    display: block;
+    height: 6px;
+    margin-top: 8px;
+    background: var(--bar-track);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .bar span {
+    display: block;
+    height: 100%;
+    background: var(--bar);
+    border-radius: 3px;
+  }
+
+  .bar-42 span {
+    width: 84%;
+  }
+
+  .bar-31 span {
+    width: 62%;
+  }
+
+  .bar-00 span {
+    width: 4%;
+  }
+
+  .bar-18 span {
+    width: 36%;
+  }
+
+  .bar-24 span {
+    width: 48%;
+  }
+
+  .is-spot {
+    background: var(--tint);
+    box-shadow: inset 3px 0 0 var(--tint-edge);
+  }
+
+  .spot-flag {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--tint-edge);
+    border-radius: 3px;
+    background: var(--paper);
+    color: var(--muted);
+    font-size: clamp(13px, 0.9vw, 16px);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: clamp(13px, 0.9vw, 16px);
+  }
+
+  .legend .keys {
+    display: flex;
+    gap: 20px;
+  }
+
+  .legend .key {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .legend .swatch {
+    display: inline-block;
+    width: 26px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bar);
+  }
+</style>
+</head>
+<body>
+<div class="ladder">
+  <header class="band">
+    <div class="title">
+      <h1>ES</h1>
+      <p class="subtitle">GEX levels &mdash; gamma exposure by strike</p>
+    </div>
+    <div class="spot">
+      <span class="spot-label">Spot</span>
+      <span class="spot-value">5850.00</span>
+    </div>
+  </header>
+
+  <main class="table-region">
+    <table aria-label="ES GEX levels by strike">
+      <colgroup>
+        <col class="c-strike">
+        <col class="c-gamma">
+        <col class="c-oi">
+        <col class="c-level">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col">Strike</th>
+          <th scope="col">Gamma</th>
+          <th scope="col">Open interest</th>
+          <th scope="col" class="c-level">Level</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row" class="strike">5900.00</th>
+          <td class="gamma pos">+0.42<span class="bar bar-42" aria-hidden="true"><span></span></span></td>
+          <td class="oi">18450</td>
+          <td class="level">Call wall</td>
+        </tr>
+        <tr>
+          <th scope="row" class="strike">5860.00</th>
+          <td class="gamma neg">-0.31<span class="bar bar-31" aria-hidden="true"><span></span></span></td>
+          <td class="oi">12380</td>
+          <td class="level">Negative gamma strike</td>
+        </tr>
+        <tr class="is-spot">
+          <th scope="row" class="strike">5850.00</th>
+          <td class="gamma flat">+0.00<span class="bar bar-00" aria-hidden="true"><span></span></span></td>
+          <td class="oi">9650</td>
+          <td class="level">
+            Zero gamma
+            <span class="spot-flag">spot</span>
+          </td>
+        </tr>
+        <tr>
+          <th scope="row" class="strike">5840.00</th>
+          <td class="gamma pos">+0.18<span class="bar bar-18" aria-hidden="true"><span></span></span></td>
+          <td class="oi">7420</td>
+          <td class="level">Positive gamma strike</td>
+        </tr>
+        <tr>
+          <th scope="row" class="strike">5800.00</th>
+          <td class="gamma neg">-0.24<span class="bar bar-24" aria-hidden="true"><span></span></span></td>
+          <td class="oi">21300</td>
+          <td class="level">Put wall</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+
+  <footer class="legend">
+    <div class="keys">
+      <span class="key"><span class="swatch" aria-hidden="true"></span>Gamma magnitude by strike</span>
+      <span class="key">Signed reading in the Gamma column</span>
+    </div>
+    <span>Levels read from this ladder only</span>
+  </footer>
+</div>
+</body>
+</html>
