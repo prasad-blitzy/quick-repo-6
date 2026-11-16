@@ -1,0 +1,32 @@
+{
+  "name": "quick-repo-6",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "setup": "playwright install chromium",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build -w @trade-read/shared && npm run build -w @trade-read/server && npm run build -w @trade-read/client",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "npm run test -w @trade-read/server",
+    "test:client": "npm run test -w @trade-read/client",
+    "test:e2e": "node scripts/run-e2e.mjs",
+    "test:live": "npm run test:live -w @trade-read/server",
+    "verify:bundle": "node scripts/verify-client-bundle.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "playwright": "^1.65.1",
+    "typescript": "^5",
+    "vite": "^7",
+    "vitest": "^5.1.0"
+  }
+}
