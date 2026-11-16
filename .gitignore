@@ -1,9 +1,31 @@
+# Dependencies
 node_modules/
+
+# Build output: shared/dist and server/dist from tsc, client/dist from vite, plus incremental
+# compiler state
 dist/
+*.tsbuildinfo
+
+# Local data directory (the default DATA_DIR): one analysis document per submission and the
+# image bytes it retained
 .data/
+
+# Test output: the Playwright harness's captured server log, coverage reports, and the artifacts
+# Playwright writes on its own
 .e2e/
 coverage/
+playwright-report/
+test-results/
+
+# Local scratch
 blitzy/
 
-# A local environment file holds the real model credential; only .env.example is committed.
+# A local environment file holds the real model credential; only the documented template is
+# committed
 .env
+.env.*
+!.env.example
+
+# Editor and OS noise
+.DS_Store
+*.log
