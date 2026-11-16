@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-synthesis-unmatched-price",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"s\":\"LONG\",\"t\":\"RETEST\",\"e\":5849.37,\"x\":5840.00,\"k\":[5845.00,5900.00],\"c\":\"M\",\"src\":[\"IMAGE_1\",\"IMAGE_2\"],\"w\":\"Long from the footprint imbalance with the positive-gamma strike as invalidation and the call wall as target.\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 639,
+    "completion_tokens": 92,
+    "total_tokens": 731
+  }
+}

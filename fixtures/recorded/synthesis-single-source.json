@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-synthesis-single-source",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"s\":\"LONG\",\"t\":\"RETEST\",\"e\":5842.75,\"x\":5841.25,\"k\":[5845.00],\"c\":\"M\",\"src\":[\"IMAGE_1\"],\"w\":\"Long from the footprint imbalance, invalidated at the value-area low of the same footprint image.\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 627,
+    "completion_tokens": 84,
+    "total_tokens": 711
+  }
+}

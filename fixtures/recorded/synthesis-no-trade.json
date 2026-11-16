@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-synthesis-no-trade",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"s\":\"NONE\",\"t\":\"WAIT\",\"e\":null,\"x\":null,\"k\":[],\"c\":\"L\",\"src\":[\"IMAGE_1\"],\"w\":\"No directional edge across the supplied levels; waiting for price to reach a level before committing.\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 618,
+    "completion_tokens": 58,
+    "total_tokens": 676
+  }
+}

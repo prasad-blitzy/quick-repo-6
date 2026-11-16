@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-synthesis-short",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"s\":\"SHORT\",\"t\":\"NOW\",\"e\":5847.00,\"x\":5850.00,\"k\":[5840.00,5836.00],\"c\":\"M\",\"src\":[\"IMAGE_1\",\"IMAGE_2\"],\"w\":\"Short from the value-area high while last trades there, invalidated above the zero-gamma strike, target the value-area low.\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 651,
+    "completion_tokens": 104,
+    "total_tokens": 755
+  }
+}
