@@ -14,7 +14,7 @@
   "scripts": {
     "setup": "playwright install chromium",
     "dev": "node scripts/dev.mjs",
-    "build": "npm run build -w @trade-read/shared && npm run build -w @trade-read/server && npm run build -w @trade-read/client",
+    "build": "tsc -p tsconfig.tools.json && npm run build -w @trade-read/shared && npm run build -w @trade-read/server && npm run build -w @trade-read/client",
     "test": "npm run test:server && npm run test:client",
     "test:server": "npm run test -w @trade-read/server",
     "test:client": "npm run test -w @trade-read/client",

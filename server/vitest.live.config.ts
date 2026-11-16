@@ -62,6 +62,10 @@ function assertLiveRunPossible(): void {
 assertLiveRunPossible();
 
 export default defineConfig({
+  // Vitest resolves the project root against `process.cwd()`, so `include` below would be read as
+  // `<cwd>/test/live/**/*.test.ts` and a run started from the repository root would collect nothing.
+  // Pinning the root to this file's directory makes the globs mean the same thing from any directory.
+  root: fileURLToPath(new URL('.', import.meta.url)),
   resolve: {
     alias: {
       '@trade-read/shared': sharedEntry,

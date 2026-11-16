@@ -15,8 +15,10 @@
  * What an expiry means is not decided here. `server/src/domain/analysis-service.ts` owns that
  * orchestration decision — `504 ANALYSIS_TIMEOUT` with nothing persisted — and consults
  * {@link Deadline.isExpired} between calls and the signals handed out by {@link Deadline.signal}
- * during them. The two never disagree: both derive from the same clock reading, and the timer
- * behind a signal carries a rounding slack so an abort never precedes the report of a spent budget.
+ * during them. The two never disagree: both derive from the same clock reading, the timer behind a
+ * signal carries a rounding slack so an abort never precedes the report of a spent budget, and a
+ * remainder beyond a timer's own ceiling is armed in capped steps that re-read the budget as they
+ * fire rather than measured in one delay the runtime would clamp.
  */
 
 import { ANALYSIS_BUDGET_MS } from '@trade-read/shared';
@@ -26,7 +28,10 @@ export interface DeadlineOptions {
   /**
    * Total budget in milliseconds, defaulting to {@link ANALYSIS_BUDGET_MS}. The one caller that
    * overrides it is a test forcing an expiry deterministically with a budget of a few milliseconds;
-   * there is deliberately no environment variable behind this value.
+   * there is deliberately no environment variable behind this value. A figure outside the
+   * admissible range is replaced rather than refused — a non-finite one by
+   * {@link ANALYSIS_BUDGET_MS}, a negative one by zero — so a bad budget still leaves a bound in
+   * place and never fails the call.
    */
   readonly budgetMs?: number;
   /**
@@ -43,7 +48,10 @@ export interface DeadlineOptions {
  * between provider calls is charged to the same budget as time spent inside them.
  */
 export interface Deadline {
-  /** The budget this deadline was created with, so a log line can name it without a second source. */
+  /**
+   * The budget this deadline resolved, so a log line can name it without a second source: the
+   * requested figure clamped to an admissible range, never one that could not bound anything.
+   */
   readonly budgetMs: number;
   /** Epoch milliseconds at which the budget started; the anchor of {@link Deadline.elapsedMs}. */
   readonly startedAt: number;
@@ -88,22 +96,29 @@ function budgetSpentReason(budgetMs: number): Error {
 const TIMER_ROUNDING_SLACK_MS = 1;
 
 /**
- * Validates the requested budget.
+ * The largest delay a timer accepts, in milliseconds.
  *
- * A budget that is not a finite, non-negative number would silently disable the bound — `NaN`
- * compares false against everything, so every remainder would be 0 or `NaN` — hence the refusal
- * rather than a defaulting fallback. Zero is admitted and yields a deadline that is already spent.
+ * The runtime stores a timer's delay in a 32-bit signed integer and clamps anything larger to
+ * 1 ms, so one delay measured from a huge remainder would fire at once and abort a budget that has
+ * barely begun — the single state this module promises never to reach. A remainder beyond this
+ * ceiling is therefore armed in capped steps, each of which re-reads the budget as it fires.
+ */
+const MAX_TIMER_DELAY_MS = 2 ** 31 - 1;
+
+/**
+ * Resolves the requested budget to the figure this deadline holds.
+ *
+ * A caller's bad budget is clamped, never refused, so this factory cannot fail. A budget that is
+ * not a finite number cannot bound anything — `NaN` compares false against everything, so every
+ * remainder would be 0 or `NaN` — hence it resolves to the {@link ANALYSIS_BUDGET_MS} constant,
+ * which is the bound this module exists to hold. A negative budget resolves to 0, the conservative
+ * side, and yields a deadline that is already spent; zero is admitted unchanged.
  */
 function resolveBudgetMs(budgetMs: number | undefined): number {
-  if (budgetMs === undefined) {
+  if (budgetMs === undefined || !Number.isFinite(budgetMs)) {
     return ANALYSIS_BUDGET_MS;
   }
-  if (!Number.isFinite(budgetMs) || budgetMs < 0) {
-    throw new RangeError(
-      `A deadline budget must be a finite, non-negative number of milliseconds; received ${String(budgetMs)}.`,
-    );
-  }
-  return budgetMs;
+  return budgetMs > 0 ? budgetMs : 0;
 }
 
 /**
@@ -139,12 +154,22 @@ export function createDeadline(options: DeadlineOptions = {}): Deadline {
       return AbortSignal.abort(reason);
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort(reason);
-    }, remaining + TIMER_ROUNDING_SLACK_MS);
-    // Unref'd because the deadline outlives most of the calls it governs: an analysis that
-    // finishes early must not keep the process alive until a budget nobody is waiting on expires.
-    timer.unref();
+    // One capped step of the wait. A delay beyond the runtime's ceiling would be clamped to 1 ms,
+    // so a remainder larger than that is re-read and armed again instead of trusted to one timer.
+    const arm = (left: number): void => {
+      const timer = setTimeout(() => {
+        const rest = remainingMs();
+        if (rest === 0) {
+          controller.abort(reason);
+          return;
+        }
+        arm(rest);
+      }, Math.min(left + TIMER_ROUNDING_SLACK_MS, MAX_TIMER_DELAY_MS));
+      // Unref'd because the deadline outlives most of the calls it governs: an analysis that
+      // finishes early must not keep the process alive until a budget nobody is waiting on expires.
+      timer.unref();
+    };
+    arm(remaining);
     return controller.signal;
   };
 

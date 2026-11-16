@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 /**
  * Test-only configuration for the client package.
@@ -11,6 +11,10 @@ import { defineConfig } from 'vitest/config';
  * this side stub `fetch` themselves and reach no network.
  */
 export default defineConfig({
+  // Vitest resolves the project root against `process.cwd()`, so `include` below would be read as
+  // `<cwd>/src/**/*.test.{ts,tsx}` and a run started from the repository root would collect nothing.
+  // Pinning the root to this file's directory makes the globs mean the same thing from any directory.
+  root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [react()],
   // Test-runner half of the `@trade-read/shared` mapping that `client/vite.config.ts` and
   // `client/tsconfig.json` also declare. It aims at the shared sources, so `npm test`
@@ -34,7 +38,9 @@ export default defineConfig({
     // trees between tests so one suite's DOM cannot satisfy the next one's query.
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
-    exclude: ['node_modules', 'dist'],
+    // Vitest's defaults are spread rather than replaced, so the runner's own `**/node_modules/**`
+    // and `**/.git/**` exclusions keep their recursive form; only the build output is added.
+    exclude: [...configDefaults.exclude, 'dist'],
     // The suites stub `fetch` and assert on one fixed message per error code; a double left
     // standing between tests would make a passing assertion meaningless.
     restoreMocks: true,
