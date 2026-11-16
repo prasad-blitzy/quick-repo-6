@@ -4,3 +4,6 @@ dist/
 .e2e/
 coverage/
 blitzy/
+
+# A local environment file holds the real model credential; only .env.example is committed.
+.env
