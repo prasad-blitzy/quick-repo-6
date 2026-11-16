@@ -14,7 +14,7 @@
  * is a hard failure rather than a silently stale fixture.
  */
 
-import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
@@ -23,14 +23,19 @@ const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, '..');
 const RENDER_DIR = join(here, 'render');
 const OUT_DIR = join(here, 'screenshots');
+const LIMITS_PATH = join(REPO_ROOT, 'shared', 'src', 'limits.ts');
 
 /**
- * Longest acceptable edge for a submitted screenshot, mirroring `MAX_LONG_EDGE_PX` in
- * `shared/src/limits.ts`: an image is stored only if its long edge is at or below this many
- * pixels. This script is plain JavaScript and deliberately does not import the TypeScript module,
- * so the two values must be kept in step by hand.
+ * Longest acceptable edge for a submitted screenshot, in pixels: an image is stored only if its long
+ * edge is at or below this value. No number is stated here. `loadMaxLongEdge` reads the one
+ * declaration that owns the bound, `MAX_LONG_EDGE_PX` in `shared/src/limits.ts`, before any
+ * assertion runs, so the generator and the server cannot drift apart. If that declaration cannot be
+ * read, is missing or renamed, or is not a positive whole number of pixels, the run stops with a
+ * `FixtureError` naming the file instead of guessing a bound the server no longer enforces.
+ *
+ * Assigned by `main` before `assertCaptureTable` and `assertCaptureMatches` are ever called.
  */
-const MAX_LONG_EDGE = 2048;
+let MAX_LONG_EDGE;
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -62,6 +67,49 @@ class FixtureError extends Error {
 /** Path relative to the repository root, so reported paths do not depend on the working directory. */
 function displayPath(absolutePath) {
   return relative(REPO_ROOT, absolutePath).split('\\').join('/');
+}
+
+/**
+ * Reads the long-edge bound from the declaration that owns it: `export const MAX_LONG_EDGE_PX = …;`
+ * in `shared/src/limits.ts`, the single place every layer of the build takes the bound from. The
+ * committed source is read rather than the built `@trade-read/shared` package because this script is
+ * documented to run without a build step and adds no dependency of its own; the value is therefore
+ * always the one the server enforces.
+ *
+ * Any departure from that one declaration is fatal and is reported in full, because a generator that
+ * guessed the bound would certify fixtures against a limit nothing enforces.
+ */
+async function loadMaxLongEdge() {
+  let source;
+  try {
+    source = await readFile(LIMITS_PATH, 'utf8');
+  } catch (error) {
+    throw new FixtureError(
+      `could not read ${LIMITS_PATH}, which declares the long-edge bound this script asserts ` +
+        `(${error.message}). Restore that file from version control before generating fixtures: the ` +
+        'generator will not guess the bound every stored screenshot must respect.',
+    );
+  }
+
+  const declaration = /^export const MAX_LONG_EDGE_PX = (\d+(?:_\d+)*);$/m.exec(source);
+  if (declaration === null) {
+    throw new FixtureError(
+      `${LIMITS_PATH} declares no \`export const MAX_LONG_EDGE_PX = <pixels>;\` line. That constant is ` +
+        'the single owner of the long-edge bound this script asserts, so the generator will not guess ' +
+        'it: restore the declaration, or move the bound here if it has genuinely changed.',
+    );
+  }
+
+  const pixels = Number(declaration[1].replace(/_/g, ''));
+  if (!Number.isSafeInteger(pixels) || pixels <= 0) {
+    throw new FixtureError(
+      `${LIMITS_PATH} declares MAX_LONG_EDGE_PX as ${JSON.stringify(declaration[1])}, which is not a ` +
+        'positive whole number of pixels. The generator asserts every stored screenshot against this ' +
+        'bound, so it will not guess it: restore a positive integer declaration.',
+    );
+  }
+
+  return pixels;
 }
 
 async function loadPlaywright() {
@@ -209,11 +257,14 @@ function readPngSize(buffer, label) {
 }
 
 /**
- * Captures one table row and writes it to `outPath`. Each row gets its own browser context so the
+ * Captures one table row and returns its PNG bytes. Each row gets its own browser context so the
  * viewport, device pixel ratio and colour scheme apply to that capture alone; `fullPage: false`
  * keeps the PNG's pixel dimensions equal to the viewport instead of letting content height leak in.
+ *
+ * Nothing is written here: the caller measures and asserts the returned bytes first, so a capture
+ * that fails its assertion never reaches `fixtures/screenshots/` at all.
  */
-async function renderCapture(browser, capture, outPath) {
+async function renderCapture(browser, capture) {
   const context = await browser.newContext({
     viewport: { width: capture.width, height: capture.height },
     // A device pixel ratio other than 1 would silently change the PNG's real pixel dimensions.
@@ -253,8 +304,10 @@ async function renderCapture(browser, capture, outPath) {
       () => new Promise((settle) => requestAnimationFrame(() => requestAnimationFrame(() => settle(null)))),
     );
 
-    await page.screenshot({ path: outPath, type: 'png', fullPage: false });
+    const buffer = await page.screenshot({ type: 'png', fullPage: false });
     await page.close();
+
+    return buffer;
   } finally {
     await context.close().catch((error) => {
       process.stderr.write(`generate-fixtures: warning: a browser context did not close cleanly: ${error.message}\n`);
@@ -284,6 +337,8 @@ function assertCaptureMatches(capture, measured, label) {
 }
 
 async function main() {
+  MAX_LONG_EDGE = await loadMaxLongEdge();
+
   const { chromium } = await loadPlaywright();
 
   assertCaptureTable();
@@ -300,11 +355,12 @@ async function main() {
       const outPath = join(OUT_DIR, capture.output);
       const label = displayPath(outPath);
 
-      await renderCapture(browser, capture, outPath);
-
-      const buffer = await readFile(outPath);
+      const buffer = await renderCapture(browser, capture);
       const measured = readPngSize(buffer, label);
       assertCaptureMatches(capture, measured, label);
+
+      // Written only once the bytes are measured and asserted, so a failed run leaves no fixture behind.
+      await writeFile(outPath, buffer);
 
       written.push({ label, width: measured.width, height: measured.height, byteSize: buffer.length });
     }

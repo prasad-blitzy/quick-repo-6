@@ -19,10 +19,11 @@ import { OBSERVATION_MAX_CHARS } from '@trade-read/shared';
  * the text below requires bumping it, so a stored read stays traceable to the wording that produced
  * it.
  */
-export const EXTRACTION_PROMPT_VERSION = 'v1';
+export const EXTRACTION_PROMPT_VERSION = 'v2';
 
 /**
- * The v1 extraction instruction text.
+ * The extraction instruction text. Its exported name is the stable handle importers use;
+ * `EXTRACTION_PROMPT_VERSION` names the revision of the wording below.
  *
  * It states everything the model contract needs and nothing the adapter enforces: the answer shape,
  * the twelve codes and their meanings, the bare-number price rule, the `LAST=` current-price token
@@ -54,7 +55,7 @@ OTH - any other visible level that matters
 There is no other code. Use OTH for a level that matters but fits none of the others, rather than inventing a code.
 
 PRICES
-A price is a bare JSON number: no currency symbol, no thousands separator, no unit, no percent sign, no surrounding text and no quotes. Write the number exactly as printed, keeping the same decimal places. Never estimate, round, average or infer a price, and never take one from memory or from another image. If a level's price is not legible, leave that level out entirely.
+A price is a bare JSON number: no currency symbol, no thousands separator, no unit, no percent sign, no surrounding text and no quotes. A JSON number cannot carry trailing zeros, so write the value the print shows and let numeric equality stand: a printed 5840.00 is written 5840, and a printed 5840.25 keeps both decimals. Never round a price to fewer digits, estimate, average or infer it, and never take a price from memory or from another image. If a level's price is not legible, leave that level out entirely.
 
 ANSWER
 The answer is one JSON object with exactly three keys, l, o and r, and no others.

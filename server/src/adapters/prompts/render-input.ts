@@ -115,9 +115,9 @@ export function renderExtractionLines(extractions: readonly ExtractionLine[]): s
 }
 
 /**
- * Renders the synthesis input: the extraction lines first, so the level evidence is read
- * before the operator's note, then the operator data, the two blocks separated by a single
- * blank line. A block with nothing in it is omitted; both empty yields the empty string.
+ * Renders the synthesis input: the extraction lines first, so the level evidence is read before the
+ * operator-supplied data, the two blocks separated by a single blank line. A block with nothing in
+ * it is omitted; both empty yields the empty string.
  */
 export function renderSynthesisData(data: SynthesisData): string {
   const blocks = [renderExtractionLines(data.extractions), renderSubmittedData(data)];

@@ -22,27 +22,16 @@
 
 import type { z } from 'zod';
 
-import {
-  CONFIDENCE_CODES,
-  EXTRACTION_CODES,
-  SYNTHESIS_SIDE_CODES,
-  SYNTHESIS_TIMING_CODES,
+import type {
+  ConfidenceCode,
+  ExtractionCode,
+  SynthesisSideCode,
+  SynthesisTimingCode,
 } from '@trade-read/shared';
 
-// The code aliases are derived here from the shared tuples rather than restated as literals, so the
-// code space has exactly one definition and a code added to a tuple widens these unions in step.
-
-/** A level code exactly as an extraction answer writes it. */
-export type ExtractionCode = (typeof EXTRACTION_CODES)[number];
-
-/** A side code exactly as a synthesis answer writes it. `NONE` is a complete read, not a failure. */
-export type SynthesisSideCode = (typeof SYNTHESIS_SIDE_CODES)[number];
-
-/** A timing code exactly as a synthesis answer writes it. */
-export type SynthesisTimingCode = (typeof SYNTHESIS_TIMING_CODES)[number];
-
-/** A confidence code exactly as a synthesis answer writes it. */
-export type ConfidenceCode = (typeof CONFIDENCE_CODES)[number];
+// The four code unions below come from the shared contract rather than being restated here, so the
+// code space keeps exactly one definition and this module keeps no runtime import at all: it is
+// declarations only.
 
 /** The two values the model's readability field may hold: a chart was read, or there was none. */
 export type ExtractionReadability = 'OK' | 'BLANK';
@@ -212,8 +201,11 @@ export interface ExtractionResult {
   readonly answer: ExtractionAnswer;
 
   /**
-   * Whether the image yielded a chart, mirroring `answer.r === 'OK'`. It is the fact the domain turns
-   * into the image's status, and `false` is a normal result rather than an error (D9).
+   * Whether the answer reports a readable chart, mirroring `answer.r === 'OK'`. It is only one of the
+   * two facts the image's status rests on: the image is `UNREADABLE` — `ImageStatus` in the shared
+   * contract — when this is `false`, and likewise when the answer carries no level with a readable
+   * price, so the status is derived from the answer and this flag together (D9). `false` is a normal
+   * result rather than an error.
    */
   readonly readable: boolean;
 

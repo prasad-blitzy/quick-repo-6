@@ -17,17 +17,20 @@
 import { SUMMARY_MAX_CHARS } from '@trade-read/shared';
 
 /** Version of the instruction text below. Changing that text requires bumping this value. */
-export const SYNTHESIS_PROMPT_VERSION = 'v1';
+export const SYNTHESIS_PROMPT_VERSION = 'v2';
 
 /**
  * The synthesis instruction text: sent as the first content part of every synthesis request, ahead
  * of the labelled per-image extraction lines and the operator's data.
+ *
+ * Its exported name is the stable handle importers use; `SYNTHESIS_PROMPT_VERSION` names the
+ * revision of the words below.
  */
 export const SYNTHESIS_PROMPT_V1 = `Synthesis task.
 
 You receive the extraction results of between one and six screenshots of one trader's own charts, and you return ONE trade read for the whole set.
 
-Each extraction arrives as one line labelled with its image id, in the form image_id=<id>: <extraction JSON>, where the extraction JSON is {"l":[[price,"CODE"],...],"o":"<observation>","r":"OK|BLANK"}. The l list holds the price levels that image showed, each price a bare number. An image whose r is "BLANK" showed no usable chart and contributes no levels. The operator-supplied block, when present, holds an instrument and a note: that is context only, never evidence of a level.
+Each extraction arrives as one line labelled with its image id, in the form image_id=<id>: <extraction JSON>, where the extraction JSON is {"l":[[price,"CODE"],...],"o":"<observation>","r":"OK|BLANK"}. The l list holds the price levels that image showed, each price a bare number. An image whose r is "BLANK" showed no usable chart and contributes no levels. The operator-supplied block, when present, holds at most two labelled lines, one labelled instrument: and one labelled context:. Both are context only, never evidence of a level.
 
 The level codes GCW, GPW, GZG, GPG and GNG belong to the gamma-exposure family; VAH, VAL, POC and IMB belong to the footprint family; ABS, LV and OTH are single levels of their own.
 
