@@ -44,18 +44,22 @@ function resolveDevPort(): number {
   const port = Number(override);
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`VITE_PORT must be an integer between 1 and 65535, received "${override}"`);
+    throw new Error('VITE_PORT must be an integer between 1 and 65535');
   }
 
   return port;
 }
 
-/** Parses an absolute URL, naming the variable that held the invalid value. */
+/**
+ * Parses an absolute URL, naming the variable in any message rather than the value it held: this value
+ * is a URL and may carry userinfo credentials, so no validation message here repeats an environment
+ * value into the console or into a captured build log.
+ */
 function parseAbsoluteUrl(name: string, raw: string): URL {
   try {
     return new URL(raw);
   } catch {
-    throw new Error(`${name} must be an absolute http(s) URL, received "${raw}"`);
+    throw new Error(`${name} must be an absolute http(s) URL`);
   }
 }
 
@@ -73,7 +77,7 @@ function resolveApiProxyTarget(): string {
   const { protocol } = parseAbsoluteUrl('VITE_API_TARGET', override);
 
   if (protocol !== 'http:' && protocol !== 'https:') {
-    throw new Error(`VITE_API_TARGET must be an http or https URL, received "${override}"`);
+    throw new Error('VITE_API_TARGET must be an http or https URL');
   }
 
   return override.replace(/\/+$/, '');
