@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-extraction-volume-profile-es",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"l\":[[5836.00,\"VAL\"],[5843.00,\"POC\"],[5847.00,\"VAH\"]],\"o\":\"LAST=5847.00 at value area high\",\"r\":\"OK\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1152,
+    "completion_tokens": 78,
+    "total_tokens": 1230
+  }
+}

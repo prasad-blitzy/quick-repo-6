@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-extraction-dom-ladder-es",
+  "object": "chat.completion",
+  "created": 1731000000,
+  "model": "google/gemini-2.5-flash",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"l\":[[5835.00,\"OTH\"],[5838.00,\"LV\"],[5840.00,\"ABS\"],[5845.00,\"OTH\"]],\"o\":\"LAST=5840.00 absorption holding the bid\",\"r\":\"OK\"}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1198,
+    "completion_tokens": 86,
+    "total_tokens": 1284
+  }
+}
