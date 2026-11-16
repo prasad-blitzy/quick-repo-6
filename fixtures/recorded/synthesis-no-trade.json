@@ -8,7 +8,7 @@
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "{\"s\":\"NONE\",\"t\":\"WAIT\",\"e\":null,\"x\":null,\"k\":[],\"c\":\"L\",\"src\":[\"IMAGE_1\"],\"w\":\"No directional edge across the supplied levels; waiting for price to reach a level before committing.\"}"
+        "content": "{\"s\":\"NONE\",\"t\":\"WAIT\",\"e\":null,\"x\":null,\"k\":[],\"c\":\"L\",\"src\":[\"3f7a1c58-2d94-4b6e-8f13-5c9d0a7e4b28\"],\"w\":\"No directional edge across the supplied levels; waiting for price to reach a level before committing.\"}"
       },
       "finish_reason": "stop"
     }

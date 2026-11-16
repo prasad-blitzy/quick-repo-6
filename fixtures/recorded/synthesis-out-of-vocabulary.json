@@ -8,7 +8,7 @@
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "{\"s\":\"MAYBE\",\"t\":\"SOON\",\"e\":5842.75,\"x\":5840.00,\"k\":[5845.00],\"c\":\"M\",\"src\":[\"IMAGE_1\",\"IMAGE_2\"],\"w\":\"Long from the footprint imbalance on a retest with the positive-gamma strike as invalidation.\"}"
+        "content": "{\"s\":\"MAYBE\",\"t\":\"SOON\",\"e\":5842.75,\"x\":5840.00,\"k\":[5845.00],\"c\":\"M\",\"src\":[\"3f7a1c58-2d94-4b6e-8f13-5c9d0a7e4b28\",\"9c40e2b7-6a15-4d38-b0f9-2e7a5c1d8063\"],\"w\":\"Long from the footprint imbalance on a retest with the positive-gamma strike as invalidation.\"}"
       },
       "finish_reason": "stop"
     }

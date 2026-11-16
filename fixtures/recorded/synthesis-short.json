@@ -8,14 +8,14 @@
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "{\"s\":\"SHORT\",\"t\":\"NOW\",\"e\":5847.00,\"x\":5850.00,\"k\":[5840.00,5836.00],\"c\":\"M\",\"src\":[\"IMAGE_1\",\"IMAGE_2\"],\"w\":\"Short from the value-area high while last trades there, invalidated above the zero-gamma strike, target the value-area low.\"}"
+        "content": "{\"s\":\"SHORT\",\"t\":\"NOW\",\"e\":5844.25,\"x\":5850.00,\"k\":[5843.50,5842.75],\"c\":\"M\",\"src\":[\"3f7a1c58-2d94-4b6e-8f13-5c9d0a7e4b28\",\"9c40e2b7-6a15-4d38-b0f9-2e7a5c1d8063\"],\"w\":\"Short the last trade inside the value area, invalidated above the zero-gamma strike, targeting the point of control and the imbalance.\"}"
       },
       "finish_reason": "stop"
     }
   ],
   "usage": {
     "prompt_tokens": 651,
-    "completion_tokens": 104,
-    "total_tokens": 755
+    "completion_tokens": 108,
+    "total_tokens": 759
   }
 }

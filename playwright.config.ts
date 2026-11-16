@@ -16,7 +16,9 @@ export default defineConfig({
   workers: 1,
   // A retry could hide a lost provider call: the harness asserts on one run's log.
   retries: 0,
-  forbidOnly: false,
+  // A left-behind test.only would shrink the end-to-end gate to one spec and still
+  // report green, so a focused run fails here on every machine the suite runs on.
+  forbidOnly: true,
   // One submission may spend the full 30 000 ms analysis budget before upload,
   // navigation and render are finished, so the spec timeout clears that budget
   // without being unbounded.
