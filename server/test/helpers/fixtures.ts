@@ -62,17 +62,18 @@ function missingScreenshotError(stem: string, path: string): Error {
     ? ''
     : ` '${stem}' is not one of the known screenshot stems (${SCREENSHOT_STEMS.join(', ')}).`;
   return new Error(
-    `Missing screenshot fixture: ${path}.${unknownStem} Screenshot fixtures are generated, not committed: ` +
-      'run `npm run setup` to install the Chromium binary the generator drives, then run ' +
-      '`node fixtures/generate-fixtures.mjs` from the repository root.',
+    `Missing screenshot fixture: ${path}.${unknownStem} The screenshot fixtures are committed to the ` +
+      'repository, so a missing copy means an incomplete checkout: restore it from version control, or ' +
+      'regenerate every screenshot by running `npm run setup` to install the Chromium binary the ' +
+      'generator drives and then `node fixtures/generate-fixtures.mjs` from the repository root.',
   );
 }
 
 /**
  * Absolute path of one screenshot fixture, asserted to be on disk.
  *
- * A missing PNG means the generator has not been run, so the error names the absolute path, the
- * stem when it is not a known one, and both commands that produce the files.
+ * A missing PNG means the checkout is incomplete, so the error names the absolute path, the stem when
+ * it is not a known one, the restore route, and the two commands that regenerate the file.
  */
 export function screenshotPath(stem: ScreenshotStem): string {
   const path = join(SCREENSHOTS_DIR, `${stem}.png`);
