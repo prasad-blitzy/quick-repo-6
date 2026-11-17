@@ -79,13 +79,18 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <h1 className="app__title">Trade read</h1>
+        <h1 className="app__title">Screenshot Trade Read</h1>
         {/* Buttons rather than links: the surface selection is state, and a link would promise an
-            address that does not exist. `aria-current` marks the surface on screen, which is also
-            what the stylesheet highlights. */}
-        <nav className="app__nav" aria-label="Screens">
+            address that does not exist, so the two destinations are secondary buttons and the
+            current one is marked with `aria-current="page"` — the destination within a set rather
+            than a pressed toggle, and the attribute the stylesheet's `[aria-current='page']` rule
+            highlights. One attribute therefore both announces and shows which surface is on
+            screen; a pressed state instead would leave that rule dead and the active surface
+            visually unmarked. */}
+        <nav className="app__nav" aria-label="Surfaces">
           <button
             type="button"
+            className="button button--secondary"
             aria-current={view.name === 'upload' ? 'page' : undefined}
             onClick={showUpload}
           >
@@ -93,6 +98,7 @@ export default function App() {
           </button>
           <button
             type="button"
+            className="button button--secondary"
             aria-current={view.name === 'history' ? 'page' : undefined}
             onClick={showHistory}
           >
@@ -101,11 +107,15 @@ export default function App() {
         </nav>
       </header>
 
-      <main className="app__main">
+      {/* The surface on screen is named here as well as marked in the nav, so which of the three is
+          mounted is readable from the shell alone, without depending on any surface's internals. */}
+      <main className="app__main" data-surface={view.name}>
         {view.name === 'upload' ? <UploadSurface onCreated={showCreatedAnalysis} /> : null}
         {view.name === 'history' ? (
           <HistorySurface onOpenAnalysis={showStoredAnalysis} onNewAnalysis={showUpload} />
         ) : null}
+        {/* The analysis case always carries the id it was opened with, so there is no id-less
+            analysis state to fall back from. */}
         {view.name === 'analysis' ? (
           <AnalysisSurface
             analysisId={view.analysisId}
