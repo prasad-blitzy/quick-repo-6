@@ -20,7 +20,10 @@ const MOUNT_ELEMENT_ID = 'root';
 const mountElement = document.getElementById(MOUNT_ELEMENT_ID);
 
 if (mountElement === null) {
-  throw new Error(`The page holds no #${MOUNT_ELEMENT_ID} element for the application to mount on.`);
+  throw new Error(
+    `The page holds no #${MOUNT_ELEMENT_ID} element for the application to mount on: ` +
+      `client/index.html must provide <div id="${MOUNT_ELEMENT_ID}"></div>.`,
+  );
 }
 
 createRoot(mountElement).render(

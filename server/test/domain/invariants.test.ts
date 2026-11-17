@@ -28,9 +28,9 @@ import {
   type Level,
 } from '@trade-read/shared';
 
+import type { MappedImage } from '../../src/domain/extraction-mapping.js';
 import { applyInvariants, type InvariantInput } from '../../src/domain/invariants.js';
 import { mapSynthesis, type SynthesisAnswer } from '../../src/domain/synthesis-mapping.js';
-import type { CurrentPriceEvidence } from '../../src/domain/timing.js';
 import {
   RECORDED_SOURCE_IMAGE_IDS,
   bindRecordedSources,
@@ -75,6 +75,30 @@ const SHARED_PRICE_LEVELS: readonly Level[] = [
 /** Every extracted level the cases resolve against, in extraction order. */
 const ALL_LEVELS: readonly Level[] = [...FOOTPRINT_LEVELS, ...GEX_LEVELS, ...SECOND_GEX_LEVELS];
 
+/**
+ * One submitted image as the domain carries it, with the fields no rule reads filled in.
+ *
+ * Only the id, the levels and the reported current price bear on the invariant passes and the timing
+ * decision they delegate to, so a case states those and nothing else.
+ */
+function submittedImage(
+  imageId: string,
+  levels: readonly Level[],
+  currentPrice: number | null,
+): MappedImage {
+  return {
+    imageId,
+    fileName: `${imageId}.png`,
+    contentType: 'image/png',
+    byteSize: 1024,
+    width: 800,
+    height: 600,
+    status: levels.length === 0 ? 'UNREADABLE' : 'ANALYZED',
+    levels: [...levels],
+    currentPrice: { imageId, price: currentPrice },
+  };
+}
+
 describe('applyInvariants', () => {
   it('voids a directional read whose entry price matches no extracted level', () => {
     const outcome = applyInvariants({
@@ -89,8 +113,7 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, invalidated at the positive-gamma strike, targeting the call wall.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('NO_TRADE');
@@ -115,8 +138,7 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, targeting the call wall and an unrecorded strike above it.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('NO_TRADE');
@@ -137,8 +159,7 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, invalidated at the value-area low of the same footprint image.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('NO_TRADE');
@@ -161,8 +182,7 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, invalidated at the positive-gamma strike, targeting the call wall.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('NO_TRADE');
@@ -184,8 +204,7 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, invalidated at the value-area low of the same footprint image.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('NO_TRADE');
@@ -207,8 +226,7 @@ describe('applyInvariants', () => {
         w: 'Long from the zero-gamma strike, invalidated at the value-area low of the footprint image.',
       }),
       levels: [...ALL_LEVELS, ...SHARED_PRICE_LEVELS],
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('LONG');
@@ -230,8 +248,7 @@ describe('applyInvariants', () => {
         w: 'Long from the positive-gamma strike, invalidated at the negative-gamma strike, targeting the call wall.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('LONG');
@@ -256,8 +273,7 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, invalidated at the positive-gamma strike, targeting the call wall.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome.side).toBe('LONG');
@@ -277,11 +293,10 @@ describe('applyInvariants', () => {
         w: 'Long on a retest of the value-area high, invalidated at the positive-gamma strike.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [{ imageId: FOOTPRINT_IMAGE_ID, price: 5844.5 }],
-      levelsByImage: new Map<string, readonly Level[]>([
-        [FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS],
-        [GEX_IMAGE_ID, GEX_LEVELS],
-      ]),
+      images: [
+        submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5844.5),
+        submittedImage(GEX_IMAGE_ID, GEX_LEVELS, null),
+      ],
     });
 
     expect(outcome.side).toBe('LONG');
@@ -303,8 +318,7 @@ describe('applyInvariants', () => {
         w: 'No directional edge across the supplied levels; waiting for price to reach a level first.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [],
-      levelsByImage: new Map<string, readonly Level[]>(),
+      images: [],
     });
 
     expect(outcome).toEqual({
@@ -330,8 +344,7 @@ describe('applyInvariants', () => {
         w: 'No trade while the chart shows nothing actionable on either image.',
       }),
       levels: ALL_LEVELS,
-      currentPrices: [{ imageId: FOOTPRINT_IMAGE_ID, price: 5844.5 }],
-      levelsByImage: new Map<string, readonly Level[]>([[FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS]]),
+      images: [submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5844.5)],
     });
 
     expect(outcome.side).toBe('NO_TRADE');
@@ -531,8 +544,7 @@ function recordedInvariantInput(
 ): InvariantInput {
   const answer = recordedSynthesisAnswer(scenario, recordedAnswerLine(envelope));
   const levels: Level[] = [];
-  const currentPrices: CurrentPriceEvidence[] = [];
-  const levelsByImage = new Map<string, readonly Level[]>();
+  const images: MappedImage[] = [];
 
   for (const stem of recordedSynthesisSourceStems(scenario)) {
     const imageId = submittedImageIds[stem] ?? RECORDED_SOURCE_IMAGE_IDS[stem];
@@ -545,24 +557,20 @@ function recordedInvariantInput(
     }));
 
     levels.push(...imageLevels);
-    levelsByImage.set(imageId, imageLevels);
-    const currentPrice = currentPriceOf(stem, extraction.observation);
-    if (currentPrice !== null) {
-      currentPrices.push({ imageId, price: currentPrice });
-    }
+    images.push(submittedImage(imageId, imageLevels, currentPriceOf(stem, extraction.observation)));
   }
 
   const namedSourceIds = new Set(answer.src);
-  for (const imageId of levelsByImage.keys()) {
-    if (!namedSourceIds.has(imageId)) {
+  for (const image of images) {
+    if (!namedSourceIds.has(image.imageId)) {
       throw new Error(
-        `The recorded synthesis-${scenario} answer does not name "${imageId}", the image its own ` +
+        `The recorded synthesis-${scenario} answer does not name "${image.imageId}", the image its own ` +
           `extraction was paired with, so the read would cite levels from an image it never claims.`,
       );
     }
   }
 
-  return { mapped: mapSynthesis(answer), levels, currentPrices, levelsByImage };
+  return { mapped: mapSynthesis(answer), levels, images };
 }
 
 describe('rules 2 and 3 over the recorded envelopes', () => {

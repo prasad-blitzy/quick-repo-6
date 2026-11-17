@@ -47,7 +47,6 @@ import { validateImages, type SubmittedImage } from './image-validation.js';
 import { applyInvariants } from './invariants.js';
 import { extractionAnswerSchema, synthesisAnswerSchema } from './schemas.js';
 import { mapSynthesis } from './synthesis-mapping.js';
-import type { CurrentPriceEvidence } from './timing.js';
 
 /** What the service needs: the two ports, the log and the configured model slug. */
 export interface AnalysisServiceDeps {
@@ -122,28 +121,6 @@ function assertBudgetRemains(isExpired: boolean): void {
   if (isExpired) {
     throw AppError.analysisTimeout();
   }
-}
-
-/**
- * The current prices the timing decision may use: only the images that reported one.
- *
- * An image with no `LAST=` evidence contributes nothing here, which is what lets the decision tell
- * "no image reports a current price" apart from "a current price was reported elsewhere".
- */
-function readableCurrentPrices(
-  mappings: ReadonlyArray<ExtractionMapResult>,
-): CurrentPriceEvidence[] {
-  const prices: CurrentPriceEvidence[] = [];
-
-  for (const mapping of mappings) {
-    const { imageId, price } = mapping.image.currentPrice;
-
-    if (price !== null) {
-      prices.push({ imageId, price });
-    }
-  }
-
-  return prices;
 }
 
 /**
@@ -249,10 +226,7 @@ export function createAnalysisService(deps: AnalysisServiceDeps): AnalysisServic
         const outcome = applyInvariants({
           mapped,
           levels,
-          currentPrices: readableCurrentPrices(mappings),
-          levelsByImage: new Map(
-            mappings.map((mapping) => [mapping.image.imageId, mapping.image.levels] as const),
-          ),
+          images: mappings.map((mapping) => mapping.image),
         });
 
         const document = buildAnalysisDocument({

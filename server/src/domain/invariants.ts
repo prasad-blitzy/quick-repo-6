@@ -22,9 +22,10 @@
 
 import { isGexLevelType, type Level, type Side, type Timing } from '@trade-read/shared';
 
+import type { MappedImage } from './extraction-mapping.js';
 import { distinctImageIds, matchLevel, matchLevels } from './level-matching.js';
 import type { MappedSynthesis } from './synthesis-mapping.js';
-import { decideTiming, type CurrentPriceEvidence } from './timing.js';
+import { decideTiming } from './timing.js';
 
 /** Everything the passes may look at: the mapped read, the extracted levels, and the price evidence. */
 export interface InvariantInput {
@@ -32,10 +33,11 @@ export interface InvariantInput {
   readonly mapped: MappedSynthesis;
   /** Every level the submission's extractions produced, in extraction order. */
   readonly levels: readonly Level[];
-  /** Every current price the extractions reported, in submission order. */
-  readonly currentPrices: readonly CurrentPriceEvidence[];
-  /** Each image's extracted levels, keyed by image id, as the timing decision needs them. */
-  readonly levelsByImage: ReadonlyMap<string, readonly Level[]>;
+  /**
+   * Every submitted image, in submission order, with the levels it yielded and the current price it
+   * reported: the evidence the timing decision is judged against.
+   */
+  readonly images: ReadonlyArray<MappedImage>;
 }
 
 /**
@@ -200,11 +202,12 @@ export function applyInvariants(input: InvariantInput): InvariantOutcome {
     return noTradeOutcome([sourceSufficiencySentence(evidenceImageCount, sourceImageCount)]);
   }
 
+  // The timing is judged against the level the entry price resolved to, which is the trigger the read
+  // itself cites, and against the images' own reported current prices.
   const decision = decideTiming({
     proposed: mapped.timing,
-    triggerPrice: mapped.entryPrice,
-    currentPrices: input.currentPrices,
-    levelsByImage: input.levelsByImage,
+    triggerLevel: resolution.entry,
+    images: input.images,
   });
 
   const assumptions: string[] = [];
