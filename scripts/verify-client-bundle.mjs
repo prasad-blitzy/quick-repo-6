@@ -1,111 +1,172 @@
+#!/usr/bin/env node
 /**
- * Bundle leak gate: builds the client, then reads every file the build produced and fails the run
- * if the artefact holds anything that must never reach a browser.
+ * verify-client-bundle — the static half of the proof that nothing a browser must never see
+ * reaches it.
  *
- * What it searches for, and why each is banned:
- *   - the model credential's variable name and the leading shape of its value: the client must
- *     never be able to name a credential it must not carry;
- *   - the hostname of every vendor endpoint, because the model has exactly one gateway and a second
- *     hostname in the bundle would be a second egress path;
- *   - a distinctive phrase from each of the two built-in instruction texts, which live only in the
- *     server's prompt modules and must not be inlined into the client.
+ * The gate builds the client, reads every byte the build produced, and fails when the bundle
+ * carries any of three things:
  *
- * The prompt phrases are derived from those modules at run time rather than repeated here: each
- * instruction text has exactly one copy in the build, and a second copy in this script would be a
- * second source of truth that nothing keeps in step with the first. A module that cannot be read,
- * or whose text cannot be delimited, fails the gate, because a scan whose needle set came out empty
- * would pass silently and that is the one outcome a leak gate must never produce.
+ *   - the model credential: neither the name of the variable that holds it nor the leading shape of
+ *     its value may appear in a browser artefact;
+ *   - a model provider hostname: the server has exactly one gateway and the client reaches it through
+ *     its own same-origin proxy prefix, so a vendor host in the bundle would be a second egress path;
+ *   - a phrase from either built-in instruction text: both texts live only in the server's prompt
+ *     modules, and a copy inside the bundle would hand the instruction to anyone who opens it.
  *
- * The scan is exported so it can be pointed at a staged directory without running a build; the
- * build and the exit code live in the guarded entry point below.
+ * The prompt phrases are derived from those two modules on every run rather than repeated here. A
+ * second copy of the text in this script would be a second source of truth that nothing keeps in
+ * step with the first, and a stale copy would report a clean scan while the text it exists to
+ * protect had already changed. For the same reason a module that cannot be read, or that yields no
+ * usable phrase, fails the gate: a scan whose needle set came out empty would pass, and passing on
+ * nothing is the one outcome a leak gate must never produce.
+ *
+ * The script reads no environment file and prints no matched value — only the file, the pattern's
+ * label and a fixed description of the pattern — so a gate run can neither write the credential into
+ * a build log nor confirm a candidate key to whoever reads that log.
+ *
+ * Usage:
+ *   node scripts/verify-client-bundle.mjs                 build the client, then scan client/dist
+ *   node scripts/verify-client-bundle.mjs --skip-build    scan the client/dist already on disk
+ *
+ * The second form serves a caller that has just built the client itself; it scans whatever is on
+ * disk and therefore trusts that build. The first form is what `npm run verify:bundle` runs.
+ *
+ * Exit codes: 0 for a clean bundle; 1 for a matched pattern, for a phrase that could not be derived,
+ * or for a bundle that is missing or empty; otherwise the client build's own non-zero code, so a
+ * failed build can never be read as a clean scan.
  */
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
-/** Repository root: build and scan run there whatever directory the script started in. */
+/** Repository root, resolved from this file, so the gate runs from whatever directory it started in. */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** The directory the client build writes: the only artefact this gate reads. */
-const CLIENT_DIST = resolve(ROOT, 'client', 'dist');
+/** The client package, and the directory its build writes: the only artefact this gate reads. */
+const CLIENT_DIR = join(ROOT, 'client');
+const DIST_DIR = join(CLIENT_DIR, 'dist');
+
+/** The prompt modules that hold the only copies of the two instruction texts. */
+const PROMPT_DIR = join(ROOT, 'server', 'src', 'adapters', 'prompts');
+
+/**
+ * Each instruction text with the label its findings carry. The gate reads these modules and never
+ * imports them: it needs their text, not their behaviour, and reading them keeps the scan runnable
+ * before the server has been built.
+ */
+const PROMPT_MODULES = [
+  { source: 'extraction', path: join(PROMPT_DIR, 'extraction-prompt.ts') },
+  { source: 'synthesis', path: join(PROMPT_DIR, 'synthesis-prompt.ts') },
+];
 
 const IS_WINDOWS = process.platform === 'win32';
+
+/** `npm.cmd` is the executable on Windows; a bare `npm` there is a shell script the call cannot run. */
 const NPM_COMMAND = IS_WINDOWS ? 'npm.cmd' : 'npm';
 
-/** The client build as the workspace declares it, so the gate builds what the operator builds. */
-const CLIENT_BUILD_ARGS = ['run', 'build', '-w', '@trade-read/client'];
+/** The client build exactly as the workspace declares it, so the gate builds what an operator builds. */
+const CLIENT_BUILD_ARGS = ['run', 'build', '--workspace', '@trade-read/client'];
 
-/** The credential's variable name. Its presence in a bundle means the client can name the key. */
+const USAGE = 'usage: node scripts/verify-client-bundle.mjs [--skip-build]';
+
+/** The credential's variable name. Its presence in a bundle means the browser can name the secret. */
 const CREDENTIAL_VARIABLE = 'OPENROUTER_API_KEY';
 
 /**
- * The leading shape of a vendor key, assembled from parts at run time so this file does not hold
- * the string a secret scanner looks for. The gate's subject is the shape of a key, never a key.
+ * The leading shape of a model provider key, assembled from its parts at run time so this file does
+ * not itself carry the string a secret scanner searches for. The gate's subject is the shape of a
+ * key, never a key, and a committed file must not look like the thing it forbids.
  */
 const CREDENTIAL_KEY_PREFIX = ['sk', 'or'].join('-') + '-';
 
 /**
- * Hostnames the build may not contain. The first is the one gateway the server uses (the client
- * reaches it through its own proxy prefix, never by name); the rest are the vendors a second egress
- * path would introduce. A Bedrock endpoint ends in `amazonaws.com`, so that suffix covers it.
+ * Hostnames the bundle may not contain. The first is the single gateway the server uses — the client
+ * reaches it only through its own same-origin proxy prefix, never by name — and the rest are the
+ * vendors a second egress path would introduce. `generativelanguage.googleapis.com` is listed ahead
+ * of the `googleapis.com` it ends in, so the specific host is reported before its suffix.
  */
 const PROVIDER_HOSTS = [
   'openrouter.ai',
   'openai.com',
   'anthropic.com',
+  'generativelanguage.googleapis.com',
   'googleapis.com',
   'amazonaws.com',
+  'bedrock',
+  'azure.com',
+  'cohere.ai',
+  'mistral.ai',
+  'groq.com',
 ];
 
 /**
- * The instruction texts and where their single copy lives: one module each, and the exported
- * template literal whose body the server sends to the model.
+ * The current-price token every extraction answer must carry. It is the one fixed token of the
+ * extraction instruction that can be asserted without restating any of that text: if it appears in
+ * the bundle, some part of the extraction instruction reached the browser.
  */
-const PROMPT_MODULES = [
+const PROMPT_TOKEN = 'LAST=';
+
+/**
+ * The constant patterns, each with the stable label its findings carry and a description fit to
+ * print. No description repeats a matched value, so a report never becomes the leak it reports.
+ */
+const STATIC_PATTERNS = [
   {
-    label: 'extraction',
-    path: resolve(ROOT, 'server', 'src', 'adapters', 'prompts', 'extraction-prompt.ts'),
-    exportName: 'EXTRACTION_PROMPT_V1',
+    label: 'credential-variable',
+    pattern: CREDENTIAL_VARIABLE,
+    description: 'the model credential variable name',
   },
   {
-    label: 'synthesis',
-    path: resolve(ROOT, 'server', 'src', 'adapters', 'prompts', 'synthesis-prompt.ts'),
-    exportName: 'SYNTHESIS_PROMPT_V1',
+    label: 'credential-value-shape',
+    pattern: CREDENTIAL_KEY_PREFIX,
+    description: 'the leading shape of a model provider key',
+  },
+  ...PROVIDER_HOSTS.map((host) => ({
+    label: 'provider-host',
+    pattern: host,
+    description: `a model provider hostname (${host})`,
+  })),
+  {
+    label: 'prompt-token',
+    pattern: PROMPT_TOKEN,
+    description: 'the current-price token the extraction instruction requires',
   },
 ];
 
 /**
- * Shortest phrase this gate accepts as a prompt needle. A shorter one would be a phrase ordinary
- * prose could contain by accident, and a coincidental match would fail a clean bundle.
+ * Shortest phrase this gate accepts as a prompt needle. Ordinary prose eight characters long could
+ * occur in any bundle by accident, and a coincidental match would fail a clean build; a phrase this
+ * long belongs to the instruction text and to nothing else in a client bundle.
  */
-const MIN_NEEDLE_LENGTH = 16;
+const MIN_PHRASE_LENGTH = 48;
 
-/** Characters kept either side of a masked span in a reported excerpt. */
-const EXCERPT_RADIUS = 40;
+/** Characters of a phrase the scan looks for: long enough to be distinctive, short enough to match. */
+const PHRASE_NEEDLE_LENGTH = 48;
+
+/** Phrases kept per module: the longest are the most distinctive, and twenty of them cover the text. */
+const MAX_PHRASES_PER_MODULE = 20;
+
+/** The escapes a string literal in these sources can carry, decoded to the character each stands for. */
+const DECODED_ESCAPES = {
+  n: ' ',
+  r: ' ',
+  t: ' ',
+  '0': '\u0000',
+  '"': '"',
+  "'": "'",
+  '`': '`',
+  '\\': '\\',
+};
 
 /**
- * Longest masked run still reported with its context. Past this the excerpt carries the span's
- * length and no surrounding text, so one pathological inline blob is neither reprinted nor turned
- * into a multi-kilobyte report line.
- */
-const MASKED_SPAN_LIMIT = 200;
-
-/**
- * Characters that can belong to the same token: the base64/base64url and vendor-key alphabet plus
- * the word characters a prompt phrase carries. Whitespace, a quote, a brace, a bracket, a comma and
- * every other delimiter end the run.
- */
-const TOKEN_CHARACTER = /[A-Za-z0-9_\-./+=]/;
-
-/**
- * Skips a `${...}` interpolation beginning just after its opening brace, returning the index of the
- * first character past its closing brace, or `null` when the source ends inside it.
+ * Skips a `${...}` interpolation that begins just after its opening brace and returns the index of
+ * the first character past its closing brace, or `null` when the source ends inside it.
  *
- * Braces are counted rather than a full expression parsed: an interpolation in a prompt module is
- * an imported constant, never a construct that would put an unmatched brace inside a string.
+ * Braces are counted rather than an expression parsed: an interpolation in a prompt module is an
+ * imported constant, never a construct that would put an unmatched brace inside a string.
  */
 function skipInterpolation(source, start) {
   let depth = 1;
@@ -118,6 +179,7 @@ function skipInterpolation(source, start) {
       depth += 1;
     } else if (character === '}') {
       depth -= 1;
+
       if (depth === 0) {
         return index + 1;
       }
@@ -130,183 +192,184 @@ function skipInterpolation(source, start) {
 }
 
 /**
- * The literal segments of an exported template literal, in source order. An interpolated expression
- * is skipped instead of returned, because its value is not part of the text the gate searches for
- * and its placeholder form would never appear in a built bundle.
+ * Reads the string literal that starts at `start`, returning its decoded value and the index of the
+ * first character after it, or `null` when the source ends inside the literal.
  *
- * Returns `null` when the export is absent or its body cannot be delimited, so the caller fails the
- * gate instead of scanning for a phrase it never derived.
+ * Escapes are decoded to the characters they stand for, so a phrase taken from a single-quoted
+ * literal and the same phrase inside a de-escaped bundle compare equal. A `${...}` interpolation
+ * stands as a space: its value is unknown here, and its source form would never appear in a bundle.
  */
-export function readTemplateSegments(source, exportName) {
-  const literal = exportName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const declaration = new RegExp(`export\\s+const\\s+${literal}\\s*(?::\\s*string)?\\s*=\\s*\``);
-  const opening = declaration.exec(source);
-
-  if (opening === null) {
-    return null;
-  }
-
-  const segments = [];
-  let current = '';
-  let index = opening.index + opening[0].length;
+function readStringLiteral(source, start) {
+  const quote = source[start];
+  let value = '';
+  let index = start + 1;
 
   while (index < source.length) {
     const character = source[index];
 
     if (character === '\\') {
-      const next = source[index + 1];
+      const escaped = source[index + 1];
 
-      if (next === undefined) {
+      if (escaped === undefined) {
         return null;
       }
 
-      // An escape is kept as written: a bundle that carried the text would carry the same escape.
-      current += character + next;
+      value += Object.hasOwn(DECODED_ESCAPES, escaped) ? DECODED_ESCAPES[escaped] : escaped;
       index += 2;
       continue;
     }
 
-    if (character === '`') {
-      segments.push(current);
-      return segments;
+    if (character === quote) {
+      return { value, next: index + 1 };
     }
 
-    if (character === '$' && source[index + 1] === '{') {
-      segments.push(current);
-      current = '';
-
+    if (quote === '`' && character === '$' && source[index + 1] === '{') {
       const resume = skipInterpolation(source, index + 2);
 
       if (resume === null) {
         return null;
       }
 
+      value += ' ';
       index = resume;
       continue;
     }
 
-    current += character;
+    // An unterminated single- or double-quoted literal ends at its line end, so one stray quote
+    // cannot swallow the rest of the module.
+    if (quote !== '`' && character === '\n') {
+      return { value, next: index };
+    }
+
+    value += character;
     index += 1;
   }
 
-  // The literal was never closed.
   return null;
 }
 
 /**
- * Two needles per instruction text: the body's first non-empty line and its longest line, trimmed.
+ * Every string literal in a source module, in source order: template literals, single-quoted and
+ * double-quoted ones alike, with comment bodies skipped so a sentence of documentation is never
+ * mistaken for instruction text.
  *
- * A line that an interpolation cuts in half is dropped, because what a bundle would hold is the
- * interpolated value and not the source form of that line. Lines shorter than `MIN_NEEDLE_LENGTH`
- * are dropped for the same reason the threshold exists.
+ * This is a scanner for needles rather than a parser: it walks the source once, treats `//` and
+ * `/*` as comments outside a literal, and stops at an unterminated literal with what it has.
  */
-export function derivePromptNeedles(source, exportName, label) {
-  const segments = readTemplateSegments(source, exportName);
+function collectStringLiterals(source) {
+  const literals = [];
+  let index = 0;
 
-  if (segments === null) {
-    return {
-      needles: [],
-      problem:
-        `${label}: ${exportName} is not a template literal in its module, ` +
-        'so no phrase could be derived from it',
-    };
-  }
+  while (index < source.length) {
+    const character = source[index];
+    const next = source[index + 1];
 
-  const lines = [];
-
-  segments.forEach((segment, segmentIndex) => {
-    const parts = segment.split('\n');
-
-    parts.forEach((text, partIndex) => {
-      // The first part of every segment but the first begins mid-line, and so does the last part of
-      // every segment but the last: an interpolation sits on that side of it.
-      const partial =
-        (partIndex === 0 && segmentIndex > 0) ||
-        (partIndex === parts.length - 1 && segmentIndex < segments.length - 1);
-
-      if (!partial) {
-        const trimmed = text.trim();
-
-        if (trimmed !== '') {
-          lines.push(trimmed);
-        }
-      }
-    });
-  });
-
-  if (lines.length === 0) {
-    return {
-      needles: [],
-      problem:
-        `${label}: ${exportName} holds no complete non-empty line, ` +
-        'so no phrase could be derived from it',
-    };
-  }
-
-  let longest = lines[0];
-
-  for (const line of lines) {
-    if (line.length > longest.length) {
-      longest = line;
+    if (character === '/' && next === '/') {
+      const lineEnd = source.indexOf('\n', index + 2);
+      index = lineEnd === -1 ? source.length : lineEnd + 1;
+      continue;
     }
+
+    if (character === '/' && next === '*') {
+      const commentEnd = source.indexOf('*/', index + 2);
+      index = commentEnd === -1 ? source.length : commentEnd + 2;
+      continue;
+    }
+
+    if (character === "'" || character === '"' || character === '`') {
+      const literal = readStringLiteral(source, index);
+
+      if (literal === null) {
+        break;
+      }
+
+      literals.push(literal.value);
+      index = literal.next;
+      continue;
+    }
+
+    index += 1;
   }
 
-  const needles = [...new Set([lines[0], longest])].filter(
-    (line) => line.length >= MIN_NEEDLE_LENGTH,
-  );
-
-  if (needles.length === 0) {
-    return {
-      needles: [],
-      problem:
-        `${label}: every line of ${exportName} is shorter than ${MIN_NEEDLE_LENGTH} ` +
-        'characters, so no phrase from it would be distinctive',
-    };
-  }
-
-  return { needles, problem: null };
+  return literals;
 }
 
 /**
- * The full needle set: the constant ones, plus two phrases derived from each instruction text.
+ * The phrases this gate searches for in a bundle: every string literal of at least
+ * `MIN_PHRASE_LENGTH` characters once its whitespace is collapsed to single spaces and trimmed,
+ * deduped, longest first, and capped at `MAX_PHRASES_PER_MODULE`.
  *
- * `problems` collects every reason a prompt phrase could not be derived; the caller treats a
- * non-empty list as a failed gate.
+ * Longest first is what makes the cap safe: a template literal holding a whole instruction text is
+ * the most distinctive thing in its module, so it is never the candidate a cap removes.
  */
-export function buildScanNeedles(modules = PROMPT_MODULES) {
-  const needles = [
-    { label: 'the credential variable name', value: CREDENTIAL_VARIABLE },
-    { label: 'the credential key shape', value: CREDENTIAL_KEY_PREFIX },
-    ...PROVIDER_HOSTS.map((host) => ({ label: `the provider host ${host}`, value: host })),
-  ];
+function derivePromptPhrases(source) {
+  const phrases = new Set();
 
+  for (const literal of collectStringLiterals(source)) {
+    const phrase = literal.replace(/\s+/g, ' ').trim();
+
+    if (phrase.length >= MIN_PHRASE_LENGTH) {
+      phrases.add(phrase);
+    }
+  }
+
+  return [...phrases]
+    .sort((left, right) => right.length - left.length)
+    .slice(0, MAX_PHRASES_PER_MODULE);
+}
+
+/**
+ * Reads both prompt modules and returns the full needle set: the constant patterns plus each
+ * module's derived phrases, with the phrase count per module and every reason a phrase could not be
+ * derived.
+ *
+ * `problems` is what makes a half-scan impossible: the caller fails the gate on any entry, so a
+ * module that moved, vanished or lost its literal cannot quietly reduce the check to the constant
+ * patterns.
+ */
+function buildNeedles() {
+  const needles = [...STATIC_PATTERNS];
+  const phraseCounts = new Map();
   const problems = [];
 
-  for (const module of modules) {
+  for (const module of PROMPT_MODULES) {
     let source;
 
     try {
       source = readFileSync(module.path, 'utf8');
     } catch (error) {
       problems.push(
-        `${module.label}: its prompt module could not be read (${module.path}): ${error.message}`,
+        `cannot read ${relative(ROOT, module.path)}; the prompt-absence check cannot be trusted ` +
+          `(${error.message})`,
       );
       continue;
     }
 
-    const derived = derivePromptNeedles(source, module.exportName, module.label);
+    const phrases = derivePromptPhrases(source);
+    phraseCounts.set(module.source, phrases.length);
 
-    if (derived.problem !== null) {
-      problems.push(derived.problem);
+    if (phrases.length === 0) {
+      problems.push(
+        `cannot derive a phrase from ${relative(ROOT, module.path)}: it holds no string literal of ` +
+          `at least ${MIN_PHRASE_LENGTH} characters, so the prompt-absence check would scan for nothing`,
+      );
       continue;
     }
 
-    for (const phrase of derived.needles) {
-      needles.push({ label: `the ${module.label} prompt text`, value: phrase });
+    for (const phrase of phrases) {
+      needles.push({
+        label: `prompt-phrase:${module.source}`,
+        pattern: phrase.slice(0, PHRASE_NEEDLE_LENGTH),
+        description: `a phrase from the ${module.source} instruction text`,
+        // A phrase reaches a bundle only inside a JavaScript or CSS string, where its spaces are
+        // written as escapes or collapsed by minification. The normalised copy is the form that
+        // finds it, so the raw bytes are not searched for a phrase.
+        phrase: true,
+      });
     }
   }
 
-  return { needles, problems };
+  return { needles, phraseCounts, problems };
 }
 
 /** Every regular file under `directory`, depth first, as absolute paths. */
@@ -326,8 +389,8 @@ function walkFiles(directory) {
       continue;
     }
 
-    // A symlink is followed only when it lands on a regular file, so a link loop cannot hang the
-    // scan and a link to a directory is covered through the directory itself.
+    // A symbolic link counts only when it resolves to a regular file: following a link to a
+    // directory could loop, and such a directory is walked in its own right.
     if (entry.isSymbolicLink()) {
       try {
         if (statSync(path).isFile()) {
@@ -342,177 +405,100 @@ function walkFiles(directory) {
   return files;
 }
 
-/** The whole token a match sits in: the match extended both ways over `TOKEN_CHARACTER`. */
-function tokenSpanAt(text, index, length) {
-  let start = index;
-  let end = index + length;
-
-  while (start > 0 && TOKEN_CHARACTER.test(text[start - 1])) {
-    start -= 1;
-  }
-
-  while (end < text.length && TOKEN_CHARACTER.test(text[end])) {
-    end += 1;
-  }
-
-  return { start, end };
-}
-
 /**
- * A window of context around a match with the whole key-shaped run it sits in masked, so a report
- * never reprints a secret. Masking the match alone would not be enough: two of the needles are the
- * six characters of a key's leading shape, so the text right after such a hit is the credential's
- * own body. The masked span is therefore the token the match belongs to — extended over every
- * character that can belong to it — and the context window sits outside that span. A span past
- * `MASKED_SPAN_LIMIT` is reported by its length alone, with no surrounding text.
- */
-function redactExcerpt(text, index, length) {
-  const span = tokenSpanAt(text, index, length);
-  const maskedLength = span.end - span.start;
-
-  if (maskedLength > MASKED_SPAN_LIMIT) {
-    return `[REDACTED: ${maskedLength} characters]`;
-  }
-
-  const start = Math.max(0, span.start - EXCERPT_RADIUS);
-  const end = Math.min(text.length, span.end + EXCERPT_RADIUS);
-  const before = text.slice(start, span.start).replace(/\s+/g, ' ');
-  const after = text.slice(span.end, end).replace(/\s+/g, ' ');
-
-  return `${start > 0 ? '...' : ''}${before}[REDACTED]${after}${end < text.length ? '...' : ''}`;
-}
-
-/**
- * The pure scanning surface: reads every file under `distDir` and reports each needle found.
+ * The second search text: a copy of the file with the escapes a bundled string carries folded back
+ * into the characters they stand for, and every whitespace run collapsed to a space.
  *
- * Files are read as bytes and decoded as UTF-8 with replacement, so a binary asset is scanned
- * instead of skipped. A missing or empty directory is a failure in its own right and is reported as
- * `ok: false` with no matches, which the caller must not mistake for a clean scan.
+ * A minified bundle writes the spaces of an instruction as `\n` escapes or folds the whole text into
+ * one long token, so the raw bytes of such a file never hold a phrase as its module writes it. Only
+ * this form does, which is why the scan reads both.
  */
-export function collectBundleLeaks(distDir, needles) {
-  for (const needle of needles) {
-    if (typeof needle.value !== 'string' || needle.value === '') {
-      throw new Error('collectBundleLeaks: every needle needs a non-empty string value');
-    }
-  }
+function deEscape(text) {
+  return text
+    .replace(/\\r\\n/g, ' ')
+    .replace(/\\[nrt]/g, ' ')
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  const root = resolve(distDir);
-
-  if (!existsSync(root) || !statSync(root).isDirectory()) {
-    return {
-      ok: false,
-      reason: `${root} does not exist, so there was no bundle to scan`,
-      filesScanned: 0,
-      bytesScanned: 0,
-      matches: [],
-    };
-  }
-
-  const files = walkFiles(root);
-
-  if (files.length === 0) {
-    return {
-      ok: false,
-      reason: `${root} holds no files, so there was no bundle to scan`,
-      filesScanned: 0,
-      bytesScanned: 0,
-      matches: [],
-    };
-  }
-
-  const matches = [];
-  let bytesScanned = 0;
+/**
+ * Every needle found in the bundle, one record per file and pattern.
+ *
+ * Files are read as bytes and decoded as `latin1`: each ASCII byte maps to one character and byte
+ * positions are preserved, so a binary asset is scanned rather than skipped and no decode can throw.
+ * A file may raise several records, and the scan never stops at the first one, because a single run
+ * should surface everything there is to fix.
+ */
+function scanFiles(files, needles) {
+  const hits = [];
 
   for (const file of files) {
-    const buffer = readFileSync(file);
-    bytesScanned += buffer.length;
-
-    const text = buffer.toString('utf8');
+    const raw = readFileSync(file).toString('latin1');
+    const normalised = deEscape(raw);
+    const reported = new Set();
 
     for (const needle of needles) {
-      const first = text.indexOf(needle.value);
+      const searched = needle.phrase ? [normalised] : [raw, normalised];
 
-      if (first === -1) {
+      if (!searched.some((text) => text.includes(needle.pattern))) {
         continue;
       }
 
-      let occurrences = 0;
-      let from = first;
+      // One record per pattern, however many of the search texts and however many occurrences hold
+      // it, so a report lists each problem once.
+      const key = `${needle.label}\u0000${needle.pattern}`;
 
-      while (from !== -1) {
-        occurrences += 1;
-        from = text.indexOf(needle.value, from + needle.value.length);
+      if (reported.has(key)) {
+        continue;
       }
 
-      matches.push({
+      reported.add(key);
+
+      hits.push({
         file: relative(ROOT, file),
         label: needle.label,
-        occurrences,
-        excerpt: redactExcerpt(text, first, needle.value.length),
+        pattern: needle.pattern,
+        description: needle.description,
       });
     }
   }
 
-  return {
-    ok: matches.length === 0,
-    reason: null,
-    filesScanned: files.length,
-    bytesScanned,
-    matches,
-  };
-}
-
-function formatCommand(args) {
-  return [NPM_COMMAND, ...args].join(' ');
-}
-
-/** Prints a failing gate with one line per reason, and marks the exit code. */
-function fail(reason, details = []) {
-  console.error('\nverify:bundle FAILED');
-  console.error(`  reason  ${reason}`);
-
-  for (const detail of details) {
-    console.error(`  ${detail}`);
-  }
-
-  process.exitCode = 1;
+  return hits;
 }
 
 /**
- * Builds the client exactly as the workspace build does. The bundle the scan reads has to be the
- * one the operator's `npm run build` produces, so a stale `client/dist` is never accepted.
+ * Builds the client exactly as the workspace declares it. The bundle the scan reads has to be the one
+ * a build produces, so a stale `client/dist` is accepted only when the caller passes `--skip-build`
+ * and takes responsibility for it.
  */
 function buildClient() {
-  const command = formatCommand(CLIENT_BUILD_ARGS);
+  const command = [NPM_COMMAND, ...CLIENT_BUILD_ARGS].join(' ');
 
-  console.log(
-    `verify:bundle: building the client\n  step     build client bundle\n  command  ${command}`,
-  );
+  console.log(`verify-client-bundle: building the client (${command})`);
 
   const result = spawnSync(NPM_COMMAND, CLIENT_BUILD_ARGS, {
     cwd: ROOT,
     stdio: 'inherit',
+    // The build inherits the environment untouched: this gate never reads, forwards or prints it.
+    env: process.env,
     shell: IS_WINDOWS,
   });
 
   if (result.error) {
-    fail('the client build could not be started', [
-      `step     build client bundle`,
-      `command  ${command}`,
-      `error    ${result.error.message}`,
-    ]);
+    console.error(
+      `verify-client-bundle: the client build could not be started: ${result.error.message}`,
+    );
+    process.exitCode = 1;
     return false;
   }
 
   if (result.status !== 0) {
-    const outcome =
-      result.status === null ? `signal ${result.signal}` : `exit code ${result.status}`;
+    console.error('verify-client-bundle: client build failed; client/dist was not verified');
 
-    fail('the client build failed, so there is no fresh bundle to scan', [
-      `step     build client bundle`,
-      `command  ${command}`,
-      `outcome  ${outcome}`,
-    ]);
+    // The build's own code is propagated, so a caller sees the failure it actually was.
+    process.exitCode = result.status === null ? 1 : result.status;
     return false;
   }
 
@@ -520,46 +506,80 @@ function buildClient() {
 }
 
 function main() {
-  if (!buildClient()) {
+  let skipBuild = false;
+
+  for (const argument of process.argv.slice(2)) {
+    if (argument === '--skip-build') {
+      skipBuild = true;
+      continue;
+    }
+
+    console.error(`verify-client-bundle: unrecognised argument "${argument}"`);
+    console.error(USAGE);
+    process.exitCode = 1;
     return;
   }
 
-  const { needles, problems } = buildScanNeedles();
+  if (!skipBuild && !buildClient()) {
+    return;
+  }
+
+  const distPath = relative(ROOT, DIST_DIR);
+
+  if (!existsSync(DIST_DIR) || !statSync(DIST_DIR).isDirectory()) {
+    console.error(
+      `verify-client-bundle: ${distPath} does not exist, so there is no client bundle to scan`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const files = walkFiles(DIST_DIR);
+
+  if (files.length === 0) {
+    console.error(
+      `verify-client-bundle: ${distPath} holds no files, so there is no client bundle to scan`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const { needles, phraseCounts, problems } = buildNeedles();
 
   if (problems.length > 0) {
-    fail('a prompt phrase could not be derived, so the prompt half of the scan was not run', [
-      ...problems.map((problem) => `problem  ${problem}`),
-      `expected  ${PROMPT_MODULES.map((module) => module.path).join(', ')}`,
-    ]);
+    for (const problem of problems) {
+      console.error(`verify-client-bundle: ${problem}`);
+    }
+
+    process.exitCode = 1;
     return;
   }
 
-  const result = collectBundleLeaks(CLIENT_DIST, needles);
+  console.log(`verify-client-bundle: scanning ${files.length} files under client/dist`);
 
-  if (!result.ok && result.matches.length === 0) {
-    fail(result.reason, [`expected  a built bundle at ${CLIENT_DIST}`]);
+  const hits = scanFiles(files, needles);
+
+  if (hits.length > 0) {
+    for (const hit of hits) {
+      console.log(`FAIL ${hit.file}: ${hit.label} — ${hit.description}`);
+    }
+
+    console.log(`verify-client-bundle: ${hits.length} problem(s) found`);
+    process.exitCode = 1;
     return;
   }
 
-  if (!result.ok) {
-    fail(`${result.matches.length} banned string(s) found in the built client`, [
-      ...result.matches.map(
-        (match) =>
-          `hit      ${match.file}: ${match.label} (${match.occurrences}x) "${match.excerpt}"`,
-      ),
-    ]);
-    return;
-  }
-
-  const labels = needles.map((needle) => needle.label).join(', ');
+  const phraseTotal = [...phraseCounts.values()].reduce((total, count) => total + count, 0);
+  const phraseBreakdown = PROMPT_MODULES.map(
+    (module) => `${module.source} ${phraseCounts.get(module.source)}`,
+  ).join(', ');
 
   console.log(
-    `verify:bundle: clean - ${result.filesScanned} file(s), ${result.bytesScanned} byte(s) ` +
-      `scanned for ${needles.length} needle(s): ${labels}`,
+    `verify-client-bundle: clean — ${files.length} file(s) scanned for ` +
+      `${STATIC_PATTERNS.length} static patterns and ${phraseTotal} derived prompt phrase(s) ` +
+      `(${phraseBreakdown}); no matches found`,
   );
 }
 
-// The entry point, guarded so the scan can be re-run against a staged directory without a build.
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main();
-}
+main();
+
