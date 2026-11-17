@@ -26,11 +26,12 @@ import {
 
 import type { AnalysisService } from '../domain/analysis-service.js';
 import { AppError } from '../domain/errors.js';
+import { isValidAnalysisId, isValidImageId } from '../domain/ids.js';
 import type { AnalysisRepository } from '../ports/analysis-repository.js';
 
 import { pickKnownFields, uploadImages } from './multipart.js';
 
-/** What the analysis router needs: the domain service, the store and the log. */
+/** What the analysis router needs: the domain service and the persistence port. */
 export interface AnalysisRouterDeps {
   /** Runs one submission end to end; the route sets the status and nothing else. */
   readonly service: AnalysisService;
@@ -59,22 +60,35 @@ function asyncRoute(
 }
 
 /**
+ * The only shape a page size has: a run of digits. Anything else — `abc`, `-3`, `2.5`, `1e3`,
+ * `0x10`, a repeated parameter that arrived as a list, a bracket-named object — is not a page size
+ * this API reads, and never becomes a number by a coercion rule the caller did not intend.
+ */
+const PAGE_SIZE_PATTERN = /^\d+$/;
+
+/**
  * Reads the page size a list request asks for.
  *
- * A value that is not a positive integer — absent, empty, `abc`, `0`, `-3`, `2.5` — resolves to the
- * documented default, and a value beyond the cap is clamped to the cap. Neither case is an error:
- * the request's error table defines no code for a bad query value.
+ * A value that is not a run of digits, and a run that is zero, resolve to the documented default, and
+ * a value beyond the cap is clamped to the cap. Neither case is an error: the request's error table
+ * defines no code for a bad query value, so clamping is the whole behaviour (AAP §0.3.1, D12).
  */
 function resolveLimit(raw: unknown): number {
   const candidate = Array.isArray(raw) ? raw[0] : raw;
 
-  if (typeof candidate !== 'string' || candidate.trim() === '') {
+  if (typeof candidate !== 'string') {
     return HISTORY_LIMIT_DEFAULT;
   }
 
-  const parsed = Number(candidate);
+  const trimmed = candidate.trim();
 
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+  if (!PAGE_SIZE_PATTERN.test(trimmed)) {
+    return HISTORY_LIMIT_DEFAULT;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+
+  if (parsed <= 0) {
     return HISTORY_LIMIT_DEFAULT;
   }
 
@@ -82,21 +96,47 @@ function resolveLimit(raw: unknown): number {
 }
 
 /**
- * Reads one path parameter as text.
+ * Admits one path parameter only when it is an analysis id this system generated, and answers
+ * anything else as a missing record.
  *
- * A route parameter arrives as text unless a pattern captured a repeated segment, and a path this
- * router did not match is not a case it has to invent an answer for, so anything else resolves to
- * the empty string — which the store's id guard then refuses with the same `NOT_FOUND` an absent
- * record gets.
+ * The guard runs here, before the repository is asked about the id, because an analysis id is also
+ * the directory name of its analysis beneath `DATA_DIR`: an id that fails its pattern must never
+ * reach a path builder. `404 NOT_FOUND` is the answer a crafted id and an id that was never stored
+ * both get, so a caller cannot tell the two apart or learn the layout by probing (§0.3.1, D1). The
+ * store re-checks the pattern as well, which is why this refusal is not the only one.
+ *
+ * @param value - The parameter as Express parsed it: text for a matched route, absent otherwise.
+ * @returns The id, narrowed to the type the port takes.
+ * @throws {AppError} `404 NOT_FOUND` for a value that is not an id this system generated.
  */
-function pathParam(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+function requireAnalysisId(value: unknown): string {
+  if (!isValidAnalysisId(value)) {
+    throw AppError.notFound();
+  }
+
+  return value;
+}
+
+/**
+ * Admits one path parameter only when it is an image id this system generated, for the same reason:
+ * an image id is the stored file name of that image's bytes.
+ *
+ * @param value - The parameter as Express parsed it.
+ * @returns The id, narrowed to the type the port takes.
+ * @throws {AppError} `404 NOT_FOUND` for a value that is not an id this system generated.
+ */
+function requireImageId(value: unknown): string {
+  if (!isValidImageId(value)) {
+    throw AppError.notFound();
+  }
+
+  return value;
 }
 
 /**
  * Builds the analysis router.
  *
- * @param deps - The domain service, the store and the log.
+ * @param deps - The domain service and the persistence port.
  * @returns A router serving `/`, `/:id`, `/:id/images/:imageId` and the delete route, relative to the
  *   mount point `app.ts` chooses.
  */
@@ -144,8 +184,8 @@ export function createAnalysisRouter(deps: AnalysisRouterDeps): Router {
     '/:id/images/:imageId',
     asyncRoute(async (request, response) => {
       const stored = await deps.repository.readImage(
-        pathParam(request.params['id']),
-        pathParam(request.params['imageId']),
+        requireAnalysisId(request.params['id']),
+        requireImageId(request.params['imageId']),
       );
 
       if (stored === null) {
@@ -160,7 +200,7 @@ export function createAnalysisRouter(deps: AnalysisRouterDeps): Router {
   router.get(
     '/:id',
     asyncRoute(async (request, response) => {
-      const document = await deps.repository.findById(pathParam(request.params['id']));
+      const document = await deps.repository.findById(requireAnalysisId(request.params['id']));
 
       if (document === null) {
         throw AppError.notFound();
@@ -174,7 +214,7 @@ export function createAnalysisRouter(deps: AnalysisRouterDeps): Router {
   router.delete(
     '/:id',
     asyncRoute(async (request, response) => {
-      const analysisId = pathParam(request.params['id']);
+      const analysisId = requireAnalysisId(request.params['id']);
 
       if (!(await deps.repository.delete(analysisId))) {
         throw AppError.notFound();
