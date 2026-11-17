@@ -5,10 +5,10 @@
  * This module declares shapes and nothing else. It performs no filesystem work, builds no path,
  * serialises nothing and logs nothing; the filesystem implementation lives behind this interface
  * in `server/src/store/file-system-analysis-repository.ts` and is injected into the route layer,
- * so an object-store implementation can replace it without a route noticing. Because the port
- * knows nothing about HTTP, it never throws to signal "not found" and imports no error type: an
- * absent document is `null` and an absent deletion is `false`, and the route turns those into
- * `404 NOT_FOUND`.
+ * so an object-store implementation can replace it without a route noticing. The port declares no
+ * error type of its own: an id that fails its pattern is refused with the `NOT_FOUND` code of the
+ * shared error table in `shared/src/errors.ts`, which the implementation raises as the domain's
+ * `AppError`.
  *
  * Two rules bind every implementation, stated here because a second implementation has to honour
  * them as well:
@@ -19,9 +19,16 @@
  *   image directory.
  * - Id guard. An `analysisId` is the directory name of its analysis beneath `DATA_DIR` and an
  *   `imageId` is the stored file name of its bytes, so every id arrives from a URL path and an
- *   implementation matches it against its pattern before joining any path, answering `false` or
- *   `null` for anything that does not match. That guard is what keeps a crafted id from escaping
- *   the data directory.
+ *   implementation matches it against its pattern before joining any path: no path is ever built
+ *   from an id that fails its pattern, which is what keeps a crafted id from escaping the data
+ *   directory.
+ *
+ * An id that fails its pattern is not an unanswerable case: it is answered exactly as an id that
+ * was never stored. An id that passes its pattern and matches no record is an ordinary answer —
+ * `null` from `findById` and from `readImage`, `false` from `delete`, which the route turns into
+ * `404 NOT_FOUND`. A refused id is rejected with the shared `NOT_FOUND`, and the route answers it
+ * with that same `404 NOT_FOUND`: one code, one status and one generic sentence, carrying neither
+ * the id nor a path, so the two are indistinguishable to a caller.
  *
  * The port carries no business rule: `save` persists the document it is given verbatim, and
  * `AnalysisDocument` is defined once in `shared/src/contract.ts`, never narrowed or extended here.
@@ -70,8 +77,8 @@ export interface AnalysisRepository {
    *
    * The document is persisted verbatim, because building and correcting it is the domain's work,
    * not the store's. Bytes are written first and the document last, atomically, so a reader sees
-   * either a complete analysis or none of it. An id that does not match its pattern is refused
-   * rather than turned into a path.
+   * either a complete analysis or none of it. An id that fails its pattern is refused with the
+   * shared `NOT_FOUND` before any path is built, rather than turned into one.
    */
   save(document: AnalysisDocument, images: ReadonlyArray<StoredImage>): Promise<void>;
 
@@ -79,8 +86,9 @@ export interface AnalysisRepository {
    * Returns the stored analysis with this id, or `null` when none exists.
    *
    * `null` rather than a throw keeps the missing case out of the exception path: the route answers
-   * `404 NOT_FOUND` from it, and an id that fails its pattern guard is reported the same way as an
-   * id that was never stored.
+   * `404 NOT_FOUND` from it. An id that fails its pattern guard is rejected instead, before any
+   * path is built, with the shared `NOT_FOUND` that the route answers with that same
+   * `404 NOT_FOUND`, so a crafted id and an id that was never stored are answered alike.
    */
   findById(analysisId: string): Promise<AnalysisDocument | null>;
 
@@ -96,18 +104,22 @@ export interface AnalysisRepository {
    * Removes one stored analysis together with its image bytes.
    *
    * Resolves `true` when a document was removed and `false` when there was nothing to remove, so
-   * the route can answer `204` or `404 NOT_FOUND`. A `false` result leaves the store untouched, and
-   * an id that fails its pattern guard resolves `false` without any path being built.
+   * the route can answer `204` or `404 NOT_FOUND`. A `false` result leaves the store untouched. An
+   * id that fails its pattern guard never becomes a path either: it is rejected with the shared
+   * `NOT_FOUND`, which the route answers with the same `404 NOT_FOUND` an absent record gets, and
+   * the store is left as the `false` case leaves it.
    */
   delete(analysisId: string): Promise<boolean>;
 
   /**
    * Returns the stored bytes of one image and the content type they were saved with.
    *
-   * Resolves `null` for an unknown analysis, for an unknown image id, and for either id failing its
-   * pattern guard, so the analysis surface can re-display a stored screenshot after a restart while
-   * the route answers `404 NOT_FOUND` for anything it may not serve. Reading is scoped to one
-   * analysis: the bytes inherit the id guard and the deletion semantics of the document.
+   * Resolves `null` for an unknown analysis and for an image id that analysis does not cite, so
+   * the analysis surface can re-display a stored screenshot after a restart while the route
+   * answers `404 NOT_FOUND` for anything it may not serve. Either id failing its pattern guard is
+   * rejected before a path is built, with the shared `NOT_FOUND` behind that same `404 NOT_FOUND`.
+   * Reading is scoped to one analysis: the bytes inherit the id guard and the deletion semantics of
+   * the document.
    */
   readImage(analysisId: string, imageId: string): Promise<StoredImageBytes | null>;
 }
