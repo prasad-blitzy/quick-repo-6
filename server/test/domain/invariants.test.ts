@@ -9,7 +9,9 @@
  *
  * The two downgrade rules are also proved over the recorded envelopes themselves, whose answer lines
  * go through `mapSynthesis` and whose presupposed extraction envelopes supply the levels and the
- * current prices those answers are measured against.
+ * current prices those answers are measured against. All five recorded answers that reach these passes
+ * are then walked as one corpus, so rule 1, the reference shape D7 fixes, the determinism and the
+ * authorship of the assumption list are checked on every one of them rather than on a sample.
  *
  * The image ids are fixed readable strings because id shape is the routes' and the store's concern,
  * not this module's: a level's image id is compared for equality and never parsed here.
@@ -26,15 +28,21 @@ import {
   TIMING_CODE_TO_TIMING,
   type ExtractionCode,
   type Level,
+  type Side,
+  type Timing,
 } from '@trade-read/shared';
 
-import type { MappedImage } from '../../src/domain/extraction-mapping.js';
+import { mapExtraction, type MappedImage } from '../../src/domain/extraction-mapping.js';
+import { validateImages } from '../../src/domain/image-validation.js';
+import { buildLevelIndex } from '../../src/domain/level-matching.js';
 import {
   applyInvariants,
   type InvariantInput,
   type InvariantOutcome,
 } from '../../src/domain/invariants.js';
+import { extractionAnswerSchema } from '../../src/domain/schemas.js';
 import { mapSynthesis, type SynthesisAnswer } from '../../src/domain/synthesis-mapping.js';
+import { screenshotAttachment } from '../helpers/fixtures.js';
 import {
   RECORDED_SOURCE_IMAGE_IDS,
   bindRecordedSources,
@@ -339,6 +347,10 @@ describe('applyInvariants', () => {
     expect(outcome.targetLevels).toEqual([]);
     expect(outcome.assumptions).toHaveLength(1);
     expect(outcome.assumptions[0]).toContain('ON_RETEST');
+    // Rule 4 is decided before the gamma-exposure note, so a read its own timing evidence voided
+    // carries the correction alone; the note describes the evidence a surviving read cites, and this
+    // one cites nothing.
+    expect(outcome.assumptions[0]).not.toContain('gamma-exposure');
   });
 
   it('names each cited price that matches no extracted level in one sentence', () => {
@@ -742,6 +754,28 @@ function recordedSynthesisAnswer(
   };
 }
 
+
+/**
+ * One recorded screenshot as the analysis service maps it: the fixture's own bytes through the real
+ * upload validator, its recorded answer line through the real extraction schema, and `mapExtraction`.
+ *
+ * The cases below build their readings from the fixtures with their own helpers, so each reading is
+ * checked against this path before it is used as evidence: a case can then never be decided on levels
+ * or a current price the analysis path would not have produced.
+ */
+function productionReading(stem: RecordedExtractionStem, imageId: string): MappedImage {
+  const [validated] = validateImages([screenshotAttachment(stem)]);
+  if (validated === undefined) {
+    throw new Error(`Upload validation returned no image for the "${stem}" fixture.`);
+  }
+
+  const answer = extractionAnswerSchema.parse(
+    JSON.parse(recordedAnswerLine(recordedExtraction(stem))),
+  );
+
+  return mapExtraction({ validated, imageId, answer }).image;
+}
+
 /**
  * One recorded synthesis envelope as the invariants module's own input.
  *
@@ -770,8 +804,18 @@ function recordedInvariantInput(
       imageId,
     }));
 
+    const currentPrice = currentPriceOf(stem, extraction.observation);
+    // The evidence the case is decided on is checked against the mapping the analysis service applies
+    // to the same answer: the prices, the level types and the reported current price must be the ones
+    // the production path makes of it.
+    const mapped = productionReading(stem, imageId);
+    expect(mapped.levels.map((level) => [level.price, level.type])).toEqual(
+      imageLevels.map((level) => [level.price, level.type]),
+    );
+    expect(mapped.currentPrice.price).toBe(currentPrice);
+
     levels.push(...imageLevels);
-    images.push(submittedImage(imageId, imageLevels, currentPriceOf(stem, extraction.observation)));
+    images.push(submittedImage(imageId, imageLevels, currentPrice));
   }
 
   const namedSourceIds = new Set(answer.src);
@@ -811,6 +855,13 @@ describe('rules 2 and 3 over the recorded envelopes', () => {
     expect(outcome.targetLevels).toEqual([]);
     expect(outcome.assumptions).toHaveLength(1);
     expect(outcome.assumptions[0]).toContain('5849.37');
+
+    // Rule 2 is decided before the source-sufficiency pass, and a voided read is explained once. Had
+    // the later pass run first it would have named the missing reference this answer leaves behind —
+    // its entry price resolved to nothing — and the read would carry that sentence instead.
+    expect(outcome.assumptions[0]).not.toContain('cites no entry price');
+    expect(outcome.assumptions[0]).not.toContain('two distinct images');
+    expect(outcome.assumptions[0]).not.toContain('source image ids');
   });
 
   it('downgrades the recorded read whose entry and invalidation sit on one image', () => {
@@ -857,5 +908,242 @@ describe('rules 2 and 3 over the recorded envelopes', () => {
     expect(reboundInput.mapped.sourceImageIds).toEqual([footprintImageId, gexImageId]);
     expect(reboundInput.mapped.entryPrice).toBe(5849.37);
     expect(applyInvariants(reboundInput)).toEqual(asRecorded);
+  });
+});
+
+// Rule 6's count is not this module's to write. `server/src/domain/extraction-mapping.ts` drops a
+// reported pair whose price is not a finite number and hands the number dropped onwards, and
+// `server/src/domain/document-builder.ts` turns that count into the sentence a document records
+// (`droppedLevelAssumption`). Both sit outside this suite's import whitelist and are proved on their
+// own paths. What this module decides downstream of the drop is proved below: the dropped pair
+// produced no level, so a read citing its price names nothing, is voided, and leaves that price out
+// of every reference rather than substituting an estimate for it.
+
+describe('rule 6 — a price the extraction could not read', () => {
+  /** The price the recorded footprint reading reports, used as the pair whose own price was unread. */
+  const UNREADABLE_PRICE = 5842;
+
+  it('voids a read citing the dropped price and keeps it out of every reference', () => {
+    const footprintImageId = RECORDED_SOURCE_IMAGE_IDS['footprint-es-5m'];
+    const extraction = recordedExtractionAnswer('footprint-es-5m');
+    const levels: Level[] = extraction.pairs
+      .filter(([price]) => price !== UNREADABLE_PRICE)
+      .map(([price, code], index) => ({
+        levelId: `footprint-es-5m-level-${index + 1}`,
+        price,
+        type: EXTRACTION_CODE_TO_LEVEL_TYPE[code],
+        imageId: footprintImageId,
+      }));
+    const currentPrice = currentPriceOf('footprint-es-5m', extraction.observation);
+
+    // 5841.25 and 5845.00 are levels the reading did keep, so the price the drop removed is the only
+    // failure this answer earns. Without rule 2 the same read would also be short of a second source
+    // image, which is why the single sentence asserted below is order evidence as well as cause.
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'RETEST',
+        e: UNREADABLE_PRICE,
+        x: 5841.25,
+        k: [5845],
+        c: 'M',
+        src: [footprintImageId],
+        w: 'Long from the level the reading could not price, invalidated at the value-area low it kept.',
+      }),
+      levels,
+      images: [submittedImage(footprintImageId, levels, currentPrice)],
+    });
+
+    expect(levels.map((level) => level.price)).not.toContain(UNREADABLE_PRICE);
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.timing).toBe('WAIT');
+    expect(outcome.entryLevel).toBeNull();
+    expect(outcome.invalidationLevel).toBeNull();
+    expect(outcome.targetLevels).toEqual([]);
+    expect(outcome.assumptions).toHaveLength(1);
+    expect(outcome.assumptions[0]).toContain(String(UNREADABLE_PRICE));
+    expect(outcome.assumptions[0]).not.toContain('fewer than two source image ids');
+  });
+});
+
+/**
+ * The five recorded scenarios whose answers reach these passes, in the order the corpus lists them.
+ *
+ * `out-of-vocabulary` is absent deliberately: the schema the adapter applies rejects that answer
+ * before any mapping runs, so it never arrives here and the conformance suite owns it (D11).
+ */
+const DECIDED_SCENARIOS = [
+  'long',
+  'short',
+  'no-trade',
+  'unmatched-price',
+  'single-source',
+] as const satisfies readonly RecordedSynthesisScenario[];
+
+/** One recorded directional read the evidence supports, with the side and timing it must keep. */
+interface KeptRead {
+  /** The recorded scenario. */
+  readonly scenario: RecordedSynthesisScenario;
+  /** The side the answer takes and no pass overrules. */
+  readonly side: Side;
+  /** The timing the price evidence supports. */
+  readonly timing: Timing;
+}
+
+/**
+ * The two recorded directional reads that survive every pass.
+ *
+ * `long` proposes a retest while neither image's own current price sits at the trigger it cites, and
+ * `short` proposes `NOW` while the footprint image's current price of 5844.25 does sit at its own
+ * 5844.25 level — the trigger — on an image that carries footprint levels, so the evidence supports
+ * both. Each names two source images and cites a footprint level, which keeps rule 3 and rule 7
+ * quiet.
+ */
+const KEPT_READS: readonly KeptRead[] = [
+  { scenario: 'long', side: 'LONG', timing: 'ON_RETEST' },
+  { scenario: 'short', side: 'SHORT', timing: 'NOW' },
+];
+
+describe('every recorded scenario', () => {
+  it.each(KEPT_READS)('keeps the $scenario read as $side / $timing', ({ scenario, side, timing }) => {
+    const outcome = applyInvariants(recordedInvariantInput(scenario, recordedSynthesis(scenario)));
+
+    expect(outcome.side).toBe(side);
+    expect(outcome.timing).toBe(timing);
+    expect(outcome.entryLevel).not.toBeNull();
+    // Nothing was overruled: no missing reference, no source shortfall, no timing correction and no
+    // gamma-exposure note.
+    expect(outcome.assumptions).toEqual([]);
+  });
+
+  it('records the recorded no-trade answer as a complete result rather than a failure', () => {
+    // Rule 5: the call answers with a recommendation instead of raising, which is why an error here
+    // would surface as an unhandled throw rather than as a caught one. The answer also proves rule 5
+    // is decided before rule 3: it names one source image and cites no price, so the later pass would
+    // have written a missing-reference sentence had it run first.
+    const outcome = applyInvariants(
+      recordedInvariantInput('no-trade', recordedSynthesis('no-trade')),
+    );
+
+    expect(outcome).toEqual({
+      side: 'NO_TRADE',
+      timing: 'WAIT',
+      entryLevel: null,
+      invalidationLevel: null,
+      targetLevels: [],
+      assumptions: [],
+    });
+  });
+
+  it.each(DECIDED_SCENARIOS)(
+    'records %s as level references and no price of its own',
+    (scenario) => {
+      const input = recordedInvariantInput(scenario, recordedSynthesis(scenario));
+      const index = buildLevelIndex(input.images);
+      const outcome = applyInvariants(input);
+
+      // Rule 1: the record is a side, a timing, level references and sentences. No field of it can
+      // hold a number, so no price of the read's own can exist.
+      expect(Object.values(outcome).every((field) => typeof field !== 'number')).toBe(true);
+
+      // Every reference resolves in the index built from the extractions, at a price one of them
+      // reported: nothing is invented, and the level a reference names is the level itself.
+      const heldPrices = input.levels.map((level) => level.price);
+      const referenced = [outcome.entryLevel, outcome.invalidationLevel, ...outcome.targetLevels];
+      for (const level of referenced) {
+        if (level === null) {
+          continue;
+        }
+        expect(index.byId(level.levelId)).toBe(level);
+        expect(heldPrices).toContain(level.price);
+      }
+    },
+  );
+
+  it.each(DECIDED_SCENARIOS)('records %s with the reference shape D7 fixes', (scenario) => {
+    const outcome = applyInvariants(recordedInvariantInput(scenario, recordedSynthesis(scenario)));
+
+    // D7, in the shape this module returns: a non-actionable read names no level and no target,
+    // while an actionable one is judged against the level its entry price resolved to, so the
+    // trigger and the entry are one reference and the read always arrives with an invalidation.
+    expectActionableOrEmpty(outcome);
+    if (outcome.side !== 'NO_TRADE') {
+      expect(outcome.timing).not.toBe('WAIT');
+      expect(outcome.entryLevel).not.toBeNull();
+      expect(outcome.invalidationLevel).not.toBeNull();
+      for (const target of outcome.targetLevels) {
+        expect(target.levelId).not.toBe('');
+      }
+    }
+  });
+
+  it.each(DECIDED_SCENARIOS)(
+    'writes the same server-authored assumptions twice for %s',
+    (scenario) => {
+      const envelope = recordedSynthesis(scenario);
+      const first = applyInvariants(recordedInvariantInput(scenario, envelope));
+      const second = applyInvariants(recordedInvariantInput(scenario, envelope));
+
+      // D10: the same evidence earns the same sentences on every run, so a stored record can be
+      // re-derived and a reviewer can trust the list they read.
+      expect(second.assumptions).toEqual(first.assumptions);
+
+      const modelCodes: readonly string[] = [
+        ...Object.keys(SIDE_CODE_TO_SIDE),
+        ...Object.keys(TIMING_CODE_TO_TIMING),
+      ];
+      for (const assumption of first.assumptions) {
+        // Each entry is a sentence the server wrote: longer than any code token, and never a model
+        // code passed through as if it explained itself.
+        expect(assumption.length).toBeGreaterThan(20);
+        expect(modelCodes).not.toContain(assumption);
+      }
+    },
+  );
+
+  it('earns its assumptions from the recorded causes and writes none otherwise', () => {
+    const scenariosWithAssumptions = DECIDED_SCENARIOS.filter(
+      (scenario) =>
+        applyInvariants(recordedInvariantInput(scenario, recordedSynthesis(scenario))).assumptions
+          .length > 0,
+    );
+
+    // The sentences are cause-driven rather than decorative: the `no-trade` answer and both surviving
+    // directional reads owe no explanation at all, and exactly the two recorded downgrades earn one.
+    expect(scenariosWithAssumptions).toEqual(['unmatched-price', 'single-source']);
+  });
+});
+
+/**
+ * The order the passes run in, asserted wherever two passes could both have spoken.
+ *
+ * Only the first cause a pass finds is recorded, because a later pass cannot be judged against a read
+ * an earlier one has already voided. Three of the pairs are proved where their cases already stand:
+ * rule 2 before rule 3 in the recorded `unmatched-price` case, rule 5 before rule 3 in the recorded
+ * `no-trade` case, and rule 4 before rule 7 in the timing-contradiction case. The remaining pair is
+ * decided here, because rule 2 asks about a price and rule 5 about a side, and an answer that takes no
+ * side can still cite one.
+ */
+describe('the pass order', () => {
+  it('decides rule 2 before rule 5, so a no-trade answer still explains a price it cannot cite', () => {
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'NONE',
+        t: 'WAIT',
+        e: 5849.37,
+        x: null,
+        k: [],
+        c: 'L',
+        src: [FOOTPRINT_IMAGE_ID],
+        w: 'No trade across the supplied levels while the last trade sits between two of them.',
+      }),
+      levels: ALL_LEVELS,
+      images: [submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5844.5)],
+    });
+
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.timing).toBe('WAIT');
+    expect(outcome.assumptions).toHaveLength(1);
+    expect(outcome.assumptions[0]).toContain('5849.37');
   });
 });
