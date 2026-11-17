@@ -283,7 +283,7 @@ export function createAnalysisService(deps: AnalysisServiceDeps): AnalysisServic
             analysisId,
             imageCount: extractionCallCount,
             tokens: synthesisCompletionTokens,
-            outcome: 'ok',
+            outcome: 'persisted',
           },
           startedAt,
         );
