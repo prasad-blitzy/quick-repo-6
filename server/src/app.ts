@@ -2,134 +2,180 @@
  * The Express application: the one place the routes are composed, and the last place a failure can
  * be turned into a response body.
  *
- * The mount order is the contract. The origin allowlist runs first, so a browser on an origin the
- * application does not serve is answered without reaching a route; a JSON body cap is mounted even
- * though no route accepts one, so a future JSON route cannot be added without a bound; the two
- * routers are mounted under the shared API base path; an unmatched path is answered as `NOT_FOUND`
- * in the same body shape as every other failure; and the shared error handler is mounted last, so it
- * sees every rejection — a domain error, a parser error and an unexpected throw alike.
+ * The mount order is the contract. The origin allowlist runs first, so a cross-origin call only
+ * ever learns whether it is admitted; the JSON body cap runs before the routers, so a JSON
+ * submission is refused by the parser and answered from the shared error table instead of travelling
+ * on unbounded; the two routers are mounted under the shared API base path; and the shared error
+ * handler is mounted last, so a domain error, a parser refusal and an unexpected throw all leave
+ * through one place as `{ code, message }`. An unmatched path is deliberately left to the
+ * framework's own 404: the closed error table has no code for it, so replacing it here would put a
+ * second, drifting answer beside the table this build keeps closed.
  *
- * The application is built from injected parts: the configuration, the log, the model port and the
- * persistence port all arrive as arguments, so this module opens no connection and holds no global
- * state. `index.ts` is the only caller that builds the real parts.
+ * There is no authentication, by design, and the compensating controls are not in this file: the
+ * bind address is loopback unless a deployment says otherwise (resolved once in `config/env.ts` and
+ * applied by `index.ts`), and the allowlist below admits exactly the two origins the client dev
+ * server answers on. It never reflects an arbitrary origin and never admits `*`, so a page this
+ * application does not serve cannot read a response.
+ *
+ * The application is assembled from injected parts — the resolved configuration, the log and the two
+ * ports — so this module opens no connection, reads no environment, touches no filesystem and holds
+ * no global state. `index.ts` is the only caller that builds the real parts.
  */
 
-import express, { type Express } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 
 import { API_BASE_PATH, CLIENT_DEV_ORIGINS } from '@trade-read/shared';
 
 import type { ServerConfig } from './config/env.js';
 import { createAnalysisService } from './domain/analysis-service.js';
-import { AppError } from './domain/errors.js';
 import type { Logger } from './observability/logger.js';
 import type { AnalysisRepository } from './ports/analysis-repository.js';
 import type { VisionProvider } from './ports/vision-provider.js';
 import { createAnalysisRouter } from './routes/analysis-routes.js';
 import { errorHandler } from './routes/error-handler.js';
 import { createHealthRouter } from './routes/health-routes.js';
-import { FileSystemAnalysisRepository } from './store/file-system-analysis-repository.js';
 
-/** The JSON body cap. No route accepts a JSON body; the bound keeps one from arriving unbounded. */
+/**
+ * The cap on a JSON request body.
+ *
+ * No route accepts a JSON body, so this bound exists for the one case it can still serve: a
+ * submission posted as JSON carries no image file, and the parser's payload-too-large refusal is
+ * answered `400 NO_IMAGES` by `routes/error-handler.ts` — the same row an empty submission takes.
+ * Without the parser mounted, such a body would reach multer, which parses no multipart part and
+ * leaves the route to answer from an empty file list anyway; the cap is what bounds the bytes read
+ * before that happens.
+ */
 const JSON_BODY_LIMIT = '1mb';
 
-/** The path the analysis routes are mounted on, beside the health route under the API base path. */
+/**
+ * The path segment the analysis routes sit on, inside the shared API base path.
+ *
+ * The analysis router declares its paths relative to its mount point, so the base path itself comes
+ * from the shared package and only this one segment is named here.
+ */
 const ANALYSES_MOUNT_PATH = '/analyses';
 
-/** What building the application needs: configuration, the log and the two ports. */
-export interface CreateAppDeps {
-  /** The resolved server configuration, read once by the composition root. */
+/** The methods a browser is told it may use on an admitted origin. */
+const ALLOWED_METHODS = 'GET, POST, DELETE, OPTIONS';
+
+/** The one request header a browser is told it may send: multipart submissions carry no other. */
+const ALLOWED_HEADERS = 'Content-Type';
+
+/**
+ * The origins a browser may call from, built once from the shared list.
+ *
+ * Membership is tested with `has` rather than `includes` because the shared constant is a literal
+ * tuple: a `ReadonlySet<string>` widens it to the plain comparison the header allows, without a cast
+ * and without restating an origin here.
+ */
+const ALLOWED_ORIGINS: ReadonlySet<string> = new Set<string>(CLIENT_DEV_ORIGINS);
+
+/** The status a preflight request is answered with, whether or not its origin is admitted. */
+const PREFLIGHT_NO_CONTENT = 204;
+
+/**
+ * Everything building the application needs: the resolved configuration, the log, and the two ports
+ * every effect crosses.
+ *
+ * Both ports are injected rather than constructed here, so this module stays a composition of parts
+ * it did not build: the model boundary and the persistence boundary each have one production
+ * implementation, chosen by the composition root, and neither is visible from the other.
+ */
+export interface AppDependencies {
+  /** The configuration, loaded once by the composition root; this file reads no environment. */
   readonly config: ServerConfig;
 
-  /** The server's single writer, handed to the routes, the service and the store. */
+  /** The model port: the OpenRouter adapter, or the replay adapter when the stub is selected. */
+  readonly visionProvider: VisionProvider;
+
+  /** The persistence port: the store the routes and the domain service both write and read. */
+  readonly repository: AnalysisRepository;
+
+  /** The server's single writer, handed to the routes, the domain service and the store. */
   readonly logger: Logger;
-
-  /** The model port: the production adapter, or the replay adapter when the stub is selected. */
-  readonly provider: VisionProvider;
-
-  /**
-   * The persistence port. Defaulted to the filesystem store beneath the configured data directory,
-   * because that is the only implementation the product ships.
-   */
-  readonly repository?: AnalysisRepository;
 }
 
 /**
- * The origins the browser may call from: the two documented dev origins, plus the port a checkout
- * that reserves its own port block serves the dev client on.
+ * Answer the cross-origin headers for one request, and end a preflight.
  *
- * The second half is read from the environment here because it belongs to the run rather than to the
- * application: a clone on its own port range serves the client from an origin the fixed list does not
- * name, and the API is loopback-only and unauthenticated, so admitting a loopback origin the run
- * itself declares adds no reach. No pattern, wildcard or credentials are admitted, and an origin that
- * is neither listed nor declared is refused.
+ * The allowlist is the shared `CLIENT_DEV_ORIGINS` and nothing else: an origin is echoed only when
+ * it is a member, so a foreign origin is answered with no allow header at all and the browser
+ * refuses the response. The absence of an `Origin` — a same-origin call, `curl`, `supertest` — is
+ * not a refusal and needs no header, so the request simply continues.
+ *
+ * A preflight is answered `204` in both cases, because declining to advertise an origin is the
+ * whole refusal: the closed error table defines no code for a disallowed origin, so this is not
+ * turned into an error response.
+ *
+ * @param request - The incoming request, read only for its `Origin` header and its method.
+ * @param response - The response the allow headers are set on.
+ * @param next - The chain's continuation for a request that is not a preflight.
  */
-function allowedOrigins(): ReadonlySet<string> {
-  const origins = new Set<string>(CLIENT_DEV_ORIGINS);
-  const declaredPort = process.env['VITE_PORT']?.trim() ?? '';
+function allowListedOrigin(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): void {
+  const origin = request.headers.origin;
 
-  if (/^\d{1,5}$/.test(declaredPort)) {
-    origins.add(`http://localhost:${declaredPort}`);
-    origins.add(`http://127.0.0.1:${declaredPort}`);
+  if (typeof origin === 'string' && ALLOWED_ORIGINS.has(origin)) {
+    response.setHeader('Access-Control-Allow-Origin', origin);
+    response.setHeader('Vary', 'Origin');
+    response.setHeader('Access-Control-Allow-Methods', ALLOWED_METHODS);
+    response.setHeader('Access-Control-Allow-Headers', ALLOWED_HEADERS);
   }
 
-  return origins;
+  if (request.method === 'OPTIONS') {
+    response.status(PREFLIGHT_NO_CONTENT).end();
+    return;
+  }
+
+  next();
 }
 
 /**
  * Builds the application.
  *
- * @param deps - The configuration, the log and the two ports.
+ * The returned application is a value, not a running server: nothing here binds a socket, so the
+ * composition root decides the address and the suites can drive the routes without one.
+ *
+ * @param deps - The configuration, the two ports and the log.
  * @returns The Express application, ready to listen.
  */
-export function createApp(deps: CreateAppDeps): Express {
+export function createApp(deps: AppDependencies): Express {
   const app = express();
-  const origins = allowedOrigins();
-  const repository =
-    deps.repository ??
-    new FileSystemAnalysisRepository({ dataDir: deps.config.dataDir, logger: deps.logger });
 
   // The framework's own advertisement is no part of this application's surface.
   app.disable('x-powered-by');
 
-  app.use((request, response, next) => {
-    const origin = request.get('origin');
+  // First, so no route is reached by an origin this application does not serve.
+  app.use(allowListedOrigin);
 
-    if (origin !== undefined && origins.has(origin)) {
-      response.setHeader('Access-Control-Allow-Origin', origin);
-      response.setHeader('Vary', 'Origin');
-      response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-      response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    }
-
-    if (request.method === 'OPTIONS') {
-      response.status(204).end();
-      return;
-    }
-
-    next();
-  });
-
+  // Before the routers: a JSON submission is refused here, and the refusal is a `400 NO_IMAGES`
+  // through the shared error handler rather than a body read without a bound.
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
-  app.use(API_BASE_PATH, createHealthRouter({ config: deps.config }));
-  app.use(
-    `${API_BASE_PATH}${ANALYSES_MOUNT_PATH}`,
-    createAnalysisRouter({
-      service: createAnalysisService({
-        provider: deps.provider,
-        repository,
-        logger: deps.logger,
-        model: deps.config.model,
-      }),
-      repository,
-    }),
-  );
-
-  // An unmatched path is a missing resource, answered in the one body shape every failure uses.
-  app.use((_request, _response, next) => {
-    next(AppError.notFound());
+  // The service is composed inside the application because it is the only orchestrator: the routes
+  // and the reads below it share one instance, and the ports and the log are its only inputs.
+  const analysisService = createAnalysisService({
+    provider: deps.visionProvider,
+    repository: deps.repository,
+    logger: deps.logger,
+    model: deps.config.model,
   });
 
+  // The analysis routes also hold the persistence port, for the reads and the delete that bypass
+  // the service: a stored document, the history page, the retained image bytes and a removal.
+  app.use(
+    `${API_BASE_PATH}${ANALYSES_MOUNT_PATH}`,
+    createAnalysisRouter({ service: analysisService, repository: deps.repository }),
+  );
+
+  // Health reports configuration and nothing else, so it answers whether or not a model credential
+  // is configured and never depends on the network.
+  app.use(API_BASE_PATH, createHealthRouter({ config: deps.config }));
+
+  // Last, and the only writer of an error body in the application.
   app.use(errorHandler);
 
   return app;

@@ -2,9 +2,9 @@
  * The composition root: the one file that builds the real parts of the server and starts it.
  *
  * Everything the application is made of is constructed here and nowhere else — the configuration is
- * read once, the single logger is created, the model port is chosen from configuration, and the
- * Express application is built around them — so no module below this one decides which provider
- * runs.
+ * read once, the single logger is created, the model port is chosen from configuration, the store is
+ * placed beneath the configured data directory, and the Express application is built around them — so
+ * no module below this one decides which provider runs or where state is written.
  *
  * The server starts with no credential at all. `providerConfigured` is reported and logged as a fact
  * rather than treated as a precondition, because the whole offline surface — health, history,
@@ -24,7 +24,9 @@ import { createStubVisionProvider } from './adapters/stub/stub-vision-provider.j
 import { createApp } from './app.js';
 import { loadConfig, type ServerConfig } from './config/env.js';
 import { createLogger, type Logger } from './observability/logger.js';
+import type { AnalysisRepository } from './ports/analysis-repository.js';
 import type { VisionProvider } from './ports/vision-provider.js';
+import { FileSystemAnalysisRepository } from './store/file-system-analysis-repository.js';
 
 /**
  * Chooses the model port for this process.
@@ -54,7 +56,22 @@ function boundPort(server: Server, configuredPort: number): number {
 export function startServer(): Server {
   const config = loadConfig();
   const logger = createLogger();
-  const app = createApp({ config, logger, provider: buildProvider(config, logger) });
+
+  // The only persistence implementation the product ships, placed beneath the configured data
+  // directory. Constructing it creates nothing — the first write makes the directories it needs — so
+  // a server whose data directory does not exist yet still starts, and health and an empty history
+  // are answered all the same.
+  const repository: AnalysisRepository = new FileSystemAnalysisRepository({
+    dataDir: config.dataDir,
+    logger,
+  });
+
+  const app = createApp({
+    config,
+    logger,
+    visionProvider: buildProvider(config, logger),
+    repository,
+  });
 
   const server = app.listen(config.port, config.host, () => {
     const port = boundPort(server, config.port);
