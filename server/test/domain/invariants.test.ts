@@ -29,7 +29,11 @@ import {
 } from '@trade-read/shared';
 
 import type { MappedImage } from '../../src/domain/extraction-mapping.js';
-import { applyInvariants, type InvariantInput } from '../../src/domain/invariants.js';
+import {
+  applyInvariants,
+  type InvariantInput,
+  type InvariantOutcome,
+} from '../../src/domain/invariants.js';
 import { mapSynthesis, type SynthesisAnswer } from '../../src/domain/synthesis-mapping.js';
 import {
   RECORDED_SOURCE_IMAGE_IDS,
@@ -97,6 +101,23 @@ function submittedImage(
     levels: [...levels],
     currentPrice: { imageId, price: currentPrice },
   };
+}
+
+/**
+ * The shape every outcome obeys (D7): a non-actionable read names no level at all, and a read that
+ * carries a timing other than the wait cites the level that timing was judged against.
+ */
+function expectActionableOrEmpty(outcome: InvariantOutcome): void {
+  if (outcome.side === 'NO_TRADE' || outcome.timing === 'WAIT') {
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.timing).toBe('WAIT');
+    expect(outcome.entryLevel).toBeNull();
+    expect(outcome.invalidationLevel).toBeNull();
+    expect(outcome.targetLevels).toEqual([]);
+    return;
+  }
+
+  expect(outcome.entryLevel).not.toBeNull();
 }
 
 describe('applyInvariants', () => {
@@ -217,7 +238,7 @@ describe('applyInvariants', () => {
     const outcome = applyInvariants({
       mapped: mapSynthesis({
         s: 'LONG',
-        t: 'WAIT',
+        t: 'RETEST',
         e: 5845,
         x: 5840,
         k: [5900],
@@ -226,10 +247,13 @@ describe('applyInvariants', () => {
         w: 'Long from the zero-gamma strike, invalidated at the value-area low of the footprint image.',
       }),
       levels: [...ALL_LEVELS, ...SHARED_PRICE_LEVELS],
-      images: [],
+      // The gamma image reports a current price that sits nearest its own call wall, so no image
+      // reaches the trigger and the retest proposal stands: the shared price is what the case tests.
+      images: [submittedImage(GEX_IMAGE_ID, GEX_LEVELS, 5890)],
     });
 
     expect(outcome.side).toBe('LONG');
+    expect(outcome.timing).toBe('ON_RETEST');
     expect(outcome.entryLevel?.imageId).toBe(SECOND_GEX_IMAGE_ID);
     expect(outcome.invalidationLevel?.imageId).toBe(FOOTPRINT_IMAGE_ID);
     expect(outcome.assumptions).toEqual([]);
@@ -239,7 +263,7 @@ describe('applyInvariants', () => {
     const outcome = applyInvariants({
       mapped: mapSynthesis({
         s: 'LONG',
-        t: 'WAIT',
+        t: 'RETEST',
         e: 5841,
         x: 5860,
         k: [5900],
@@ -248,11 +272,13 @@ describe('applyInvariants', () => {
         w: 'Long from the positive-gamma strike, invalidated at the negative-gamma strike, targeting the call wall.',
       }),
       levels: ALL_LEVELS,
-      images: [],
+      // The gamma image's current price sits nearest its call wall rather than the trigger, so the
+      // retest proposal stands and this case is decided by the evidence type of the levels it cites.
+      images: [submittedImage(GEX_IMAGE_ID, GEX_LEVELS, 5890)],
     });
 
     expect(outcome.side).toBe('LONG');
-    expect(outcome.timing).toBe('WAIT');
+    expect(outcome.timing).toBe('ON_RETEST');
     expect(outcome.entryLevel?.price).toBe(5841);
     expect(outcome.invalidationLevel?.price).toBe(5860);
     expect(outcome.targetLevels.map((level) => level.price)).toEqual([5900]);
@@ -264,7 +290,7 @@ describe('applyInvariants', () => {
     const outcome = applyInvariants({
       mapped: mapSynthesis({
         s: 'LONG',
-        t: 'WAIT',
+        t: 'RETEST',
         e: 5845,
         x: 5841,
         k: [5900],
@@ -273,14 +299,19 @@ describe('applyInvariants', () => {
         w: 'Long from the value-area high, invalidated at the positive-gamma strike, targeting the call wall.',
       }),
       levels: ALL_LEVELS,
-      images: [],
+      // The footprint image's current price sits nearest its value-area low, so the trigger is not
+      // reached and the retest proposal stands on the levels the read cites.
+      images: [
+        submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5842),
+        submittedImage(GEX_IMAGE_ID, GEX_LEVELS, null),
+      ],
     });
 
     expect(outcome.side).toBe('LONG');
     expect(outcome.assumptions).toEqual([]);
   });
 
-  it('records the timing correction as an assumption when the evidence contradicts the proposal', () => {
+  it('voids the side when the evidence contradicts the proposed timing', () => {
     const outcome = applyInvariants({
       mapped: mapSynthesis({
         s: 'LONG',
@@ -299,10 +330,193 @@ describe('applyInvariants', () => {
       ],
     });
 
-    expect(outcome.side).toBe('LONG');
+    // The footprint image's current price sits at the value-area high, so the retest the answer
+    // proposes is contradicted; the record keeps one sentence saying which proposal was overruled.
+    expect(outcome.side).toBe('NO_TRADE');
     expect(outcome.timing).toBe('WAIT');
+    expect(outcome.entryLevel).toBeNull();
+    expect(outcome.invalidationLevel).toBeNull();
+    expect(outcome.targetLevels).toEqual([]);
     expect(outcome.assumptions).toHaveLength(1);
     expect(outcome.assumptions[0]).toContain('ON_RETEST');
+  });
+
+  it('names each cited price that matches no extracted level in one sentence', () => {
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'RETEST',
+        e: 5849.37,
+        x: 5846.13,
+        k: [5900, 5875],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Long from a level between the value-area high and the call wall, targeting two strikes.',
+      }),
+      levels: ALL_LEVELS,
+      images: [],
+    });
+
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.assumptions).toHaveLength(1);
+    for (const price of ['5849.37', '5846.13', '5875']) {
+      expect(outcome.assumptions[0]).toContain(price);
+    }
+    // The one target the levels do carry is not named as a failure.
+    expect(outcome.assumptions[0]).not.toContain('5900');
+  });
+
+  it('names the reference a directional read leaves out', () => {
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'SHORT',
+        t: 'RETEST',
+        e: 5845,
+        x: null,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Short from the value-area high without a level the read is invalidated at.',
+      }),
+      levels: ALL_LEVELS,
+      images: [submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5842)],
+    });
+
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.assumptions).toHaveLength(1);
+    expect(outcome.assumptions[0]).toContain('no invalidation price');
+  });
+
+  it('does not count a source image id the analysis does not hold', () => {
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'RETEST',
+        e: 5845,
+        x: 5841,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, 'image-never-submitted'],
+        w: 'Long from the value-area high, invalidated at the positive-gamma strike, targeting the call wall.',
+      }),
+      levels: ALL_LEVELS,
+      images: [],
+    });
+
+    // The entry and the invalidation do come from two images, so only the source count is short.
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.assumptions).toHaveLength(1);
+    expect(outcome.assumptions[0]).toContain('fewer than two source image ids');
+    expect(outcome.assumptions[0]).not.toContain('two distinct images');
+  });
+
+  it('normalises a side that proposes to wait to the non-actionable state', () => {
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'SHORT',
+        t: 'WAIT',
+        e: 5845,
+        x: 5841,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Short from the value-area high once price leaves it, invalidated at the positive-gamma strike.',
+      }),
+      levels: ALL_LEVELS,
+      images: [
+        submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5844.5),
+        submittedImage(GEX_IMAGE_ID, GEX_LEVELS, 5850),
+      ],
+    });
+
+    // A read that asks to wait is a complete result, so it is recorded as such and nothing about it
+    // is explained as a correction.
+    expect(outcome).toEqual({
+      side: 'NO_TRADE',
+      timing: 'WAIT',
+      entryLevel: null,
+      invalidationLevel: null,
+      targetLevels: [],
+      assumptions: [],
+    });
+  });
+
+  it('records the absent current price when that is why a waiting read waits', () => {
+    const outcome = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'WAIT',
+        e: 5845,
+        x: 5841,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Long from the value-area high once price reaches it, invalidated at the positive-gamma strike.',
+      }),
+      levels: ALL_LEVELS,
+      images: [
+        submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, null),
+        submittedImage(GEX_IMAGE_ID, GEX_LEVELS, null),
+      ],
+    });
+
+    expect(outcome.side).toBe('NO_TRADE');
+    expect(outcome.assumptions).toHaveLength(1);
+    expect(outcome.assumptions[0]).toContain('current price');
+  });
+
+  it('leaves no side without references and no wait with them', () => {
+    const voided = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'RETEST',
+        e: 5849.37,
+        x: 5841,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Long from a level neither screenshot reported, invalidated at the positive-gamma strike.',
+      }),
+      levels: ALL_LEVELS,
+      images: [submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5844.5)],
+    });
+    const waiting = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'WAIT',
+        e: 5845,
+        x: 5841,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Long from the value-area high once price reaches it, invalidated at the positive-gamma strike.',
+      }),
+      levels: ALL_LEVELS,
+      images: [submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, null)],
+    });
+    const timed = applyInvariants({
+      mapped: mapSynthesis({
+        s: 'LONG',
+        t: 'RETEST',
+        e: 5845,
+        x: 5841,
+        k: [5900],
+        c: 'M',
+        src: [FOOTPRINT_IMAGE_ID, GEX_IMAGE_ID],
+        w: 'Long on a retest of the value-area high, invalidated at the positive-gamma strike.',
+      }),
+      levels: ALL_LEVELS,
+      images: [
+        submittedImage(FOOTPRINT_IMAGE_ID, FOOTPRINT_LEVELS, 5842),
+        submittedImage(GEX_IMAGE_ID, GEX_LEVELS, 5850),
+      ],
+    });
+
+    for (const outcome of [voided, waiting, timed]) {
+      expectActionableOrEmpty(outcome);
+    }
+    expect(timed.side).toBe('LONG');
+    expect(timed.entryLevel).not.toBeNull();
   });
 
   it('passes a NO_TRADE answer through as a complete result', () => {
