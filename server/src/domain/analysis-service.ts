@@ -32,7 +32,7 @@ import {
 
 import type { Logger } from '../observability/logger.js';
 import type { AnalysisRepository, StoredImage } from '../ports/analysis-repository.js';
-import type { ImageExtraction, VisionProvider } from '../ports/vision-provider.js';
+import type { ImageExtraction, SynthesisAnswer, VisionProvider } from '../ports/vision-provider.js';
 
 import { createDeadline } from './deadline.js';
 import {
@@ -144,6 +144,19 @@ function readingAssumptions(mappings: ReadonlyArray<ExtractionMapResult>): strin
 }
 
 /**
+ * The fallback cost figure for a synthesis call whose usage the provider never reported (D14).
+ *
+ * The provider's own `usage.completion_tokens` is the figure the record wants; when it is absent the
+ * instruction is to estimate rather than record zero, so the cost block of a stored read is never a
+ * false measurement. Four characters per token is the documented approximation, applied to the
+ * accepted answer serialised as compact JSON — the content the conformance check read. The document
+ * states beside the figure that it is an estimate, so no reader mistakes it for a charge.
+ */
+function estimateCompletionTokens(answer: SynthesisAnswer): number {
+  return Math.max(1, Math.ceil(JSON.stringify(answer).length / 4));
+}
+
+/**
  * Builds the analysis service.
  *
  * @param deps - The model port, the store port, the log and the configured slug.
@@ -229,6 +242,12 @@ export function createAnalysisService(deps: AnalysisServiceDeps): AnalysisServic
           images: mappings.map((mapping) => mapping.image),
         });
 
+        // The provider's own usage figure is recorded as reported; when it reports none, the figure is
+        // estimated and the document says so, so a cost is never silently recorded as zero (D14).
+        const measuredCompletionTokens = synthesis.completionTokens;
+        const synthesisCompletionTokens =
+          measuredCompletionTokens ?? estimateCompletionTokens(synthesis.answer);
+
         const document = buildAnalysisDocument({
           analysisId,
           createdAt: new Date(now()).toISOString(),
@@ -243,9 +262,10 @@ export function createAnalysisService(deps: AnalysisServiceDeps): AnalysisServic
             provider: 'openrouter',
             model: sanitizeSlug(deps.model),
             imageCallCount: extractionCallCount,
-            synthesisCompletionTokens: synthesis.completionTokens ?? 0,
+            synthesisCompletionTokens,
             latencyMs: Math.max(0, Math.round(now() - startedAt)),
           },
+          tokensEstimated: measuredCompletionTokens === undefined,
         });
 
         // Last, and only on the success path: the store writes the image bytes before the document,
@@ -262,7 +282,7 @@ export function createAnalysisService(deps: AnalysisServiceDeps): AnalysisServic
             event: 'analysis_completed',
             analysisId,
             imageCount: extractionCallCount,
-            tokens: synthesis.completionTokens,
+            tokens: synthesisCompletionTokens,
             outcome: 'ok',
           },
           startedAt,
