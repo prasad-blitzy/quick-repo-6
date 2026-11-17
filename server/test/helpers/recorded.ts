@@ -195,10 +195,11 @@ export function recordedSynthesisSourceStems(
  * Rebind a recorded synthesis answer onto the image ids a live submission generated.
  *
  * A recorded answer cannot know the UUIDs the server mints for a submission, so an envelope on
- * disk carries the fixed ids in {@link RECORDED_SOURCE_IMAGE_IDS}. The replay adapter answers with
- * the recorded line verbatim, which needs no binding: the domain resolves a proposed price by exact
- * equality and consults the cited ids only to break a tie. A suite that wants a submission's own
- * ids in `src` calls this function with the ids it received. Only the `src` array is rewritten; the
+ * disk carries the fixed ids in {@link RECORDED_SOURCE_IMAGE_IDS}. The replay adapter aligns those
+ * citations onto the images the submission holds before the domain reads them as evidence, so a
+ * replayed read cites sources the analysis actually has. This function remains for the cases that
+ * supply their own answer — a scripted line, or a document built by hand — and equips it with the
+ * ids the case received. Only the `src` array is rewritten; the
  * prices, the codes and the sentence stay exactly as recorded, and the input envelope is never
  * mutated — the returned envelope is a fresh one.
  *

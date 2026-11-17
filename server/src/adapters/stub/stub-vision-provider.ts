@@ -359,7 +359,15 @@ export class StubVisionProvider implements VisionProvider {
     });
 
     return {
-      answer: answer.value,
+      // The readings this call was given are the only images the read can rest on, so a recording's
+      // stand-in citations are replaced by them before the domain reads `src` as evidence.
+      answer: {
+        ...answer.value,
+        src: citeSubmittedSources(
+          answer.value.src,
+          request.extractions.map((extraction) => extraction.imageId),
+        ),
+      },
       completionTokens: answer.completionTokens ?? undefined,
       callCount: answer.callCount,
     };
@@ -549,10 +557,11 @@ function inlineEnvelope(script: StubAnswerScript): ProviderEnvelope {
  * carrying no answer text, each fail as `ANALYSIS_FAILED` naming the file; the underlying message is
  * reported and its stack is not.
  *
- * The answer line is replayed verbatim, which matters for a recorded read: the prices, the codes and
- * the cited source ids are the ones the recording holds, and the domain resolves a proposed price by
- * exact equality against the extracted levels, using the cited sources only to break a tie (D6). A
- * recording therefore needs no rewriting before it is answered with.
+ * The recorded line reaches the one-line conformance check unchanged, so a recording that breaks the
+ * contract fails exactly as a live answer would. What the caller is handed is that same answer with
+ * its `src` citations aligned to the submission, because a static recording cannot name the ids the
+ * server mints (see `citeSubmittedSources`); the prices, the codes and the sentence stay as recorded,
+ * and the domain resolves a proposed price by exact equality against the extracted levels (D6).
  */
 function parseRecording(raw: string, absolutePath: string): ProviderEnvelope {
   let body: unknown;
@@ -673,6 +682,40 @@ function failureAsError(failure: StubProviderFailure, model: string): AppError {
         { model },
       );
   }
+}
+
+/**
+ * The `src` a replayed read stands on, cited by the ids the synthesis call actually carried.
+ *
+ * A recording is a static file, so it cannot know the ids a submission mints: `synthesis-long.json`
+ * cites the canonical ids its extraction envelopes were authored against. A real model answering
+ * this request would cite the ids it was handed in the `image_id=` labels, and the domain reads
+ * `src` as evidence — a directional read that names fewer than two images the analysis holds is
+ * downgraded to `NO_TRADE` by rule 3, which would make every replayed read non-directional. So the
+ * citations are substituted here, and nothing else is: the prices, the codes, the confidence and
+ * the sentence stay exactly as recorded.
+ *
+ * The count of citations is preserved — capped at the number of readings — because that is the
+ * evidence the recording asserts: a read that cites one image keeps citing one image, so the
+ * single-source fixture still earns its downgrade, while a read that cites two keeps naming two
+ * distinct images of a two-image submission. An answer whose citations are already ids of this
+ * submission, and an answer citing nothing, are returned untouched.
+ */
+function citeSubmittedSources(
+  recordedSources: readonly string[],
+  submittedImageIds: readonly string[],
+): string[] {
+  if (recordedSources.length === 0 || submittedImageIds.length === 0) {
+    return [...recordedSources];
+  }
+
+  const submitted = new Set(submittedImageIds);
+
+  if (recordedSources.every((source) => submitted.has(source))) {
+    return [...recordedSources];
+  }
+
+  return submittedImageIds.slice(0, Math.min(recordedSources.length, submittedImageIds.length));
 }
 
 /** The error a call aborted at the analysis deadline raises, carrying the name the deadline sets. */
