@@ -140,7 +140,7 @@ export function createOpenRouterVisionProvider(
      */
     async extract(request: ExtractionRequest): Promise<ExtractionResult> {
       const answer = await complete({
-        messages: extractionMessages(request),
+        messages: buildExtractionMessages(request),
         maxTokens: MAX_TOKENS_EXTRACTION,
         schema: request.schema,
         role: 'extraction',
@@ -159,7 +159,7 @@ export function createOpenRouterVisionProvider(
     /** Synthesises the trade read from every reading the extraction calls produced. */
     async synthesize(request: SynthesisRequest): Promise<SynthesisResult> {
       const answer = await complete({
-        messages: synthesisMessages(request),
+        messages: buildSynthesisMessages(request),
         maxTokens: MAX_TOKENS_SYNTHESIS,
         schema: request.schema,
         role: 'synthesis',
@@ -185,8 +185,12 @@ export function createOpenRouterVisionProvider(
  * bytes are rather than what a client claimed. The operator's instrument and context come last, as
  * the labelled, framed data `render-input.ts` produces; when neither is present that renderer
  * returns the empty string and no empty part is appended.
+ *
+ * Exported because the replay adapter under `adapters/stub/` builds the request it captures with
+ * this same function: the two implementations of the port must not be able to disagree about what
+ * an extraction request holds, and one builder is the only way to keep them from drifting (D4).
  */
-function extractionMessages(request: ExtractionRequest): ReadonlyArray<ChatMessage> {
+export function buildExtractionMessages(request: ExtractionRequest): ReadonlyArray<ChatMessage> {
   const parts: ChatContentPart[] = [
     { type: 'text', text: getExtractionPrompt() },
     { type: 'image_url', image_url: { url: imageDataUrl(request.image) } },
@@ -212,8 +216,12 @@ function extractionMessages(request: ExtractionRequest): ReadonlyArray<ChatMessa
  * reproduced character for character, so the model reads back exactly the prices and codes it
  * produced rather than a re-worded summary of them. The renderer labels the readings and frames the
  * whole block as data, and returns the empty string only when there is nothing at all to send.
+ *
+ * Exported for the same reason as {@link buildExtractionMessages}: the replay adapter captures the
+ * synthesis request it answers, and it builds that request here rather than holding a second copy of
+ * the message shape (D4).
  */
-function synthesisMessages(request: SynthesisRequest): ReadonlyArray<ChatMessage> {
+export function buildSynthesisMessages(request: SynthesisRequest): ReadonlyArray<ChatMessage> {
   const parts: ChatContentPart[] = [{ type: 'text', text: getSynthesisPrompt() }];
 
   const evidence = renderSynthesisData({

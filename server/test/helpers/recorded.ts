@@ -61,8 +61,10 @@ export type RecordedAdversarialKind = (typeof RECORDED_ADVERSARIAL_KINDS)[number
  * against.
  *
  * A recorded answer cannot know the ids the server will mint for a live submission, so each
- * envelope is recorded against these fixed canonical ids and the replay path rebinds them to the
- * ids the running submission actually received (see {@link bindRecordedSources}). Each value is a
+ * envelope is recorded against these fixed canonical ids. The replay adapter answers with a
+ * recording verbatim — the domain resolves a proposed price by exact equality and consults the
+ * cited ids only to break a tie between levels sharing one — while a suite that wants a
+ * submission's own ids in `src` binds them with {@link bindRecordedSources}. Each value is a
  * lowercase RFC 4122 version-4 UUID — the exact string the server writes into the
  * `image_id=<id>` label it sends to the synthesis call — and it names the screenshot whose
  * `extraction-<stem>.json` envelope the answer rests on, so a `src` entry always stands for an
@@ -193,11 +195,12 @@ export function recordedSynthesisSourceStems(
  * Rebind a recorded synthesis answer onto the image ids a live submission generated.
  *
  * A recorded answer cannot know the UUIDs the server mints for a submission, so an envelope on
- * disk carries the fixed ids in {@link RECORDED_SOURCE_IMAGE_IDS} and the replay path
- * (`server/src/adapters/stub/stub-vision-provider.ts`) calls this function with the ids the
- * submission actually received before handing the envelope back. Only the `src` array is
- * rewritten; the prices, the codes and the sentence stay exactly as recorded, and the input
- * envelope is never mutated — the returned envelope is a fresh one.
+ * disk carries the fixed ids in {@link RECORDED_SOURCE_IMAGE_IDS}. The replay adapter answers with
+ * the recorded line verbatim, which needs no binding: the domain resolves a proposed price by exact
+ * equality and consults the cited ids only to break a tie. A suite that wants a submission's own
+ * ids in `src` calls this function with the ids it received. Only the `src` array is rewritten; the
+ * prices, the codes and the sentence stay exactly as recorded, and the input envelope is never
+ * mutated — the returned envelope is a fresh one.
  *
  * Throws when a recorded id is not one of {@link RECORDED_SOURCE_IMAGE_IDS}' values, when the
  * presupposed stem has no submitted id, when a submitted value is not a valid image id, or when
