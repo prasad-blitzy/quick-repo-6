@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The document title is the product's name, not a readout: the recommendation belongs to the
+         analysis surface, and this page hosts whichever surface the application selects. -->
+    <title>Trade read</title>
+    <!-- An empty data-URL icon: the page ships no image asset, and without a declared icon a browser
+         asks for /favicon.ico and logs a failed request it does not need to make. -->
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!-- The single mount point `src/main.tsx` renders into. The page carries no other markup, so no
+         surface can be reached without the application rendering it. -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
